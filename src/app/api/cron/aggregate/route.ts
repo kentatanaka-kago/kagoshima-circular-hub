@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { kagoshimaCityScraper } from '@/lib/scrapers/kagoshima-city';
 import { kagoshimaPrefScraper } from '@/lib/scrapers/kagoshima-pref';
 import { envGoJpScraper } from '@/lib/scrapers/env-go-jp';
+import { fetchBody } from '@/lib/scrapers/body';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
 import { summarizeArticle } from '@/lib/ai/summarize';
 
@@ -11,8 +12,12 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const SCRAPERS = [kagoshimaCityScraper, kagoshimaPrefScraper, envGoJpScraper];
-const SUMMARIZE_BATCH = 40;       // per-run ceiling
-const SUMMARIZE_CONCURRENCY = 3;  // simultaneous Gemini calls
+const BODY_BATCH = 40;
+const BODY_CONCURRENCY = 4;
+const SUMMARIZE_BATCH = 40;
+const SUMMARIZE_CONCURRENCY = 3;
+
+type Admin = ReturnType<typeof supabaseAdmin>;
 
 export async function GET(req: Request) {
   const auth = req.headers.get('authorization');
@@ -52,9 +57,10 @@ export async function GET(req: Request) {
     inserted = data?.length ?? 0;
   }
 
+  const bodies = await backfillBodies(admin);
   const summarized = await backfillSummaries(admin);
 
-  if (inserted > 0 || summarized.ok > 0) {
+  if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0) {
     revalidatePath('/');
     revalidatePath('/calendar');
   }
@@ -64,11 +70,49 @@ export async function GET(req: Request) {
     results,
     candidates: all.length,
     inserted,
+    bodies,
     summarized,
   });
 }
 
-async function backfillSummaries(admin: ReturnType<typeof supabaseAdmin>) {
+async function backfillBodies(admin: Admin) {
+  const { data: pending, error } = await admin
+    .from('news_articles')
+    .select('id, source_url')
+    .is('raw_excerpt', null)
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .limit(BODY_BATCH);
+
+  if (error) return { pending: 0, ok: 0, failed: 0, error: error.message };
+  if (!pending || pending.length === 0) return { pending: 0, ok: 0, failed: 0 };
+
+  type Row = { id: string; source_url: string };
+  const rows = pending as Row[];
+  let ok = 0;
+  let failed = 0;
+
+  for (let i = 0; i < rows.length; i += BODY_CONCURRENCY) {
+    const batch = rows.slice(i, i + BODY_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (row) => {
+        const body = await fetchBody(row.source_url);
+        if (!body) {
+          failed += 1;
+          return;
+        }
+        const { error: updErr } = await admin
+          .from('news_articles')
+          .update({ raw_excerpt: body } as never)
+          .eq('id', row.id);
+        if (updErr) failed += 1;
+        else ok += 1;
+      }),
+    );
+  }
+  return { pending: rows.length, ok, failed };
+}
+
+async function backfillSummaries(admin: Admin) {
   const { data: pending, error } = await admin
     .from('news_articles')
     .select('id, title, source_name, raw_excerpt')
