@@ -1,45 +1,31 @@
 name: Ingest METI press releases
 
-# METI's CDN blocks Vercel IP ranges (ETIMEDOUT from both iad1 and hnd1).
-# GitHub-hosted runners use Azure IPs, which METI accepts. We fetch from
-# GitHub and POST the raw HTML to our Vercel app; the Vercel handler
-# parses it and runs the normal pipeline.
+# METI's CDN blocks Vercel IP ranges (ETIMEDOUT). GitHub-hosted runners
+# use Azure IPs, which METI accepts. We run our scraper + body fetcher
+# on the runner, then POST pre-enriched JSON to the Vercel ingest
+# endpoint; Vercel only inserts + summarises (no outbound to METI).
 
 on:
   schedule:
-    # 19:30 UTC = 04:30 JST, 30 minutes before the Vercel cron so any
-    # new METI articles get summarised in the same JST morning.
-    - cron: '30 19 * * *'
+    - cron: '30 19 * * *'  # 04:30 JST daily, ahead of the 05:00 Vercel cron
   workflow_dispatch: {}
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Fetch METI press index
-        run: |
-          curl -sSLf \
-            --retry 3 --retry-delay 5 --retry-connrefused \
-            -A 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
-            -H 'Accept: text/html,application/xhtml+xml' \
-            -H 'Accept-Language: ja,en-US;q=0.7,en;q=0.3' \
-            -o meti.html \
-            https://www.meti.go.jp/press/
-          echo "bytes=$(wc -c < meti.html)"
+      - uses: actions/checkout@v4
 
-      - name: POST to Vercel ingest endpoint
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Fetch METI, parse, post to Vercel
         env:
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
-        run: |
-          if [ -z "$INGEST_SECRET" ]; then
-            echo "INGEST_SECRET repo secret is missing" >&2
-            exit 1
-          fi
-          curl -sSf -X POST \
-            -H "Authorization: Bearer $INGEST_SECRET" \
-            -H 'Content-Type: text/html; charset=utf-8' \
-            --data-binary @meti.html \
-            --max-time 300 \
-            https://kagoshima-circular-hub.vercel.app/api/ingest/meti
-          echo
+          INGEST_ENDPOINT: https://kagoshima-circular-hub.vercel.app/api/ingest/meti
+        run: npx tsx scripts/scrape-meti.ts
