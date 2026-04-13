@@ -5,6 +5,8 @@ import { kagoshimaCityScraper } from '@/lib/scrapers/kagoshima-city';
 import { kagoshimaPrefScraper } from '@/lib/scrapers/kagoshima-pref';
 import { kirishimaScraper } from '@/lib/scrapers/kirishima';
 import { kanoyaScraper } from '@/lib/scrapers/kanoya';
+import { makurazakiScraper } from '@/lib/scrapers/makurazaki';
+import { airaScraper } from '@/lib/scrapers/aira';
 import { envGoJpScraper } from '@/lib/scrapers/env-go-jp';
 import { fetchArticlePage } from '@/lib/scrapers/body';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
@@ -18,6 +20,8 @@ const SCRAPERS = [
   kagoshimaPrefScraper,
   kirishimaScraper,
   kanoyaScraper,
+  makurazakiScraper,
+  airaScraper,
   envGoJpScraper,
 ];
 const BODY_BATCH = 40;
