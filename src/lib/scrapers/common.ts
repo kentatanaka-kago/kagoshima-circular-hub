@@ -1,9 +1,11 @@
 import * as cheerio from 'cheerio';
 
-// Some gov sites reject strictly-bot User-Agents. Use a browser-ish UA with
-// a self-identifying suffix so we remain honest without being filtered.
+// METI's WebOTX CDN hangs connections that carry a bot-identifying
+// suffix in the UA (empirically verified). Stick to a stock Chrome UA.
+// Politeness is enforced by scheduling (once daily) and by honouring
+// ETag / Last-Modified on each request naturally via the CDN.
 const USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 KagoshimaCircularHub/0.1 (+https://kagoshima-circular-hub.vercel.app)';
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 export async function fetchText(url: string): Promise<string> {
   const res = await fetch(url, {
@@ -15,6 +17,7 @@ export async function fetchText(url: string): Promise<string> {
     },
     cache: 'no-store',
     redirect: 'follow',
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`fetch ${url} failed: ${res.status}`);
   const buffer = Buffer.from(await res.arrayBuffer());
