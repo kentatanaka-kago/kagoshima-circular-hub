@@ -1,12 +1,20 @@
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
+import { CopyMenu } from '@/components/CopyMenu';
 import { formatDateJST } from '@/lib/format';
+import { toExport } from '@/lib/export';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
 
 const ALL_TAGS = ['補助金', '資源循環', '脱炭素', 'プラスチック', '食品ロス', 'バイオマス', 'サーキュラー'];
+const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function isNew(createdAt: string, now: number): boolean {
+  const t = new Date(createdAt).getTime();
+  return Number.isFinite(t) && now - t < NEW_WINDOW_MS;
+}
 
 function firstParagraph(md: string): string {
   const lines = md.split('\n');
@@ -61,6 +69,8 @@ export default async function Home({
   const sourceNames = Object.keys(sourceCounts).sort((a, b) => sourceCounts[b] - sourceCounts[a]);
 
   const activeFilter = filters.tag || filters.source;
+  const now = Date.now();
+  const exportItems = articles.map(toExport);
 
   return (
     <div className="space-y-8">
@@ -93,6 +103,11 @@ export default async function Home({
             <Link href="/" className="underline hover:text-zinc-800 dark:hover:text-zinc-200">フィルタをクリア</Link>
           </div>
         )}
+        {exportItems.length > 0 && (
+          <div className="pt-2">
+            <CopyMenu items={exportItems} size="sm" />
+          </div>
+        )}
       </section>
 
       {error && (
@@ -123,7 +138,10 @@ export default async function Home({
                 <span>更新 {formatDateJST(a.scraped_at)}</span>
               </div>
             </div>
-            <h2 className="mt-2 font-medium leading-snug">
+            <h2 className="mt-2 font-medium leading-snug flex items-baseline gap-2">
+              {isNew(a.created_at, now) && (
+                <span className="shrink-0 rounded bg-rose-500 text-white text-[10px] font-semibold px-1.5 py-0.5 leading-none uppercase tracking-wide">NEW</span>
+              )}
               <Link href={`/news/${a.id}`} className="hover:underline">{a.title}</Link>
             </h2>
             {a.ai_summary && (

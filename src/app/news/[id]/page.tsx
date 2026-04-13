@@ -2,10 +2,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
+import { CopyMenu } from '@/components/CopyMenu';
 import { formatDateJST } from '@/lib/format';
+import { toExport } from '@/lib/export';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
+
+const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export default async function NewsDetail({
   params,
@@ -21,6 +25,7 @@ export default async function NewsDetail({
 
   if (error || !data) notFound();
   const article = data as NewsArticle;
+  const isNew = Date.now() - new Date(article.created_at).getTime() < NEW_WINDOW_MS;
 
   return (
     <article className="space-y-6 max-w-3xl">
@@ -33,7 +38,15 @@ export default async function NewsDetail({
           <span>{article.source_name}</span>
           <time>{formatDateJST(article.published_at, 'long')}</time>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">{article.title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight flex items-baseline gap-3 flex-wrap">
+          {isNew && (
+            <span className="shrink-0 rounded bg-rose-500 text-white text-xs font-semibold px-2 py-0.5 leading-none uppercase tracking-wide">NEW</span>
+          )}
+          <span>{article.title}</span>
+        </h1>
+        <div className="pt-1">
+          <CopyMenu items={toExport(article)} size="sm" />
+        </div>
       </header>
 
       {article.ai_summary && (
