@@ -35,19 +35,24 @@ export interface CoverImageOutput {
 export async function generateCoverImage(input: CoverImageInput): Promise<CoverImageOutput> {
   const ai = getClient();
   const prompt = buildPrompt(input);
+  const raw = await generateRawImage(ai, prompt);
+  const pngBuffer = await resizeToNoteCover(raw);
+  return { pngBuffer, model: COVER_IMAGE_MODEL, prompt };
+}
 
-  const res = await ai.models.generateContent({
-    model: COVER_IMAGE_MODEL,
-    contents: prompt,
-  });
+// Secondary figures: square-ish inline illustration (no text). Used for
+// figure_image blocks in the article body.
+export async function generateFigureImage(rawPrompt: string): Promise<Buffer> {
+  const ai = getClient();
+  const styled = `${rawPrompt}\n\nSTYLE: clean modern infographic illustration, green/blue pastel palette, flat geometric shapes, no text, no people, suitable for an article diagram.`;
+  return generateRawImage(ai, styled);
+}
 
+async function generateRawImage(ai: GoogleGenAI, prompt: string): Promise<Buffer> {
+  const res = await ai.models.generateContent({ model: COVER_IMAGE_MODEL, contents: prompt });
   const parts = res.candidates?.[0]?.content?.parts ?? [];
   for (const p of parts) {
-    if (p.inlineData?.data) {
-      const raw = Buffer.from(p.inlineData.data, 'base64');
-      const pngBuffer = await resizeToNoteCover(raw);
-      return { pngBuffer, model: COVER_IMAGE_MODEL, prompt };
-    }
+    if (p.inlineData?.data) return Buffer.from(p.inlineData.data, 'base64');
   }
   throw new Error('Gemini did not return image data');
 }
