@@ -1,4 +1,4 @@
-import { extractTags, fetchXml, relevanceScoreFor } from './common';
+import { extractTags, fetchText, parseRssItems, relevanceScoreFor } from './common';
 import type { Scraper, ScrapedArticle } from './types';
 
 const RSS_URL = 'https://www.pref.kagoshima.jp/saishin/saishin.xml';
@@ -8,27 +8,22 @@ const SOURCE_NAME = '鹿児島県';
 export const kagoshimaPrefScraper: Scraper = {
   name: 'kagoshima-pref',
   async run(): Promise<ScrapedArticle[]> {
-    const $ = await fetchXml(RSS_URL);
+    const xml = await fetchText(RSS_URL);
     const out: ScrapedArticle[] = [];
-    $('item').each((_, el) => {
-      const item = $(el);
-      const title = item.find('title').first().text().trim();
-      const url = item.find('link').first().text().trim();
-      const date = item.find('dc\\:date, date').first().text().trim();
-      if (!title || !url) return;
-      const tags = extractTags(title);
-      if (relevanceScoreFor(tags) === 0) return;
+    for (const item of parseRssItems(xml)) {
+      const tags = extractTags(item.title);
+      if (relevanceScoreFor(tags) === 0) continue;
       out.push({
         source_type: 'municipality',
         source_id: SOURCE_ID,
         source_name: SOURCE_NAME,
-        source_url: url,
-        title,
-        published_at: date ? new Date(date).toISOString() : null,
+        source_url: item.link,
+        title: item.title,
+        published_at: item.publishedAt,
         raw_excerpt: null,
         tags,
       });
-    });
+    }
     return out;
   },
 };
