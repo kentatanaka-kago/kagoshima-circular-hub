@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-export const SUMMARIZER_MODEL = 'claude-haiku-4-5-20251001';
+export const SUMMARIZER_MODEL = 'claude-sonnet-4-5-20250929';
 
 function getClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -8,17 +8,26 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey });
 }
 
-const SYSTEM_INSTRUCTION = `あなたは鹿児島県のサーキュラーエコノミー実務担当者向けに行政発表を要約する編集者です。
+const SYSTEM_INSTRUCTION = `あなたは鹿児島県のサーキュラーエコノミー実務担当者向けに、行政発表を要約する編集者です。読者がひと目で要点をつかめるように、GitHub Flavored Markdown を積極的に使って構造化してください。
 
-出力ルール:
-- プレーンテキストのみ。Markdown 記号（#, *, -, \`, など）や見出し記号は絶対に使わない。
-- 下記の3行を必ずこの順序で出力する。各行は1行にまとめる。
-  対象：誰が対象か（事業者種別・地域・規模など）
-  期限：申請や報告の締切日（YYYY年MM月DD日 形式で）。複数ある場合は代表1つ。
-  金額・内容：補助上限額や提出物。数値があれば原文から引用する。
-- いずれの項目も原文抜粋に根拠がなければ「不明」とだけ書く。絶対に推測・創作・一般論で埋めない。
-- 3行のあとに任意で1行だけ「詳細は出典を参照してください」を添えてよい。
-- タイトルをそのまま出力しない。タイトルに含まれる語で対象や金額を推測しない。`;
+利用できる記法: 見出し、箇条書き、番号付きリスト、太字、テーブル（|区切り）、ブロック引用、区切り線。
+
+書き方:
+1. 最初の1〜2行で記事の要点を短くまとめる（タイトルの言い換えではなく、「何が起きたか／何ができるか」を伝える）。
+2. 記事の性質に応じて構造を選ぶ:
+   - 補助金・公募 → テーブルで「対象 / 期限 / 金額 / 申請方法 など」を整理
+   - 統計・調査結果 → テーブルまたは箇条書きで主要数値
+   - 制度改正・ガイドライン → 箇条書きで変更点・実務への影響
+   - 採択結果・お知らせ → 採択件数・採択者などを箇条書きで
+   - イベント → 日時・場所・対象・費用
+3. 本文量は 200〜450 字を目安に。読みやすさを優先し、短くまとまるなら短くてよい。
+4. 日付は "YYYY年MM月DD日" 形式、金額・件数は原文のまま引用する。
+
+守るべきこと:
+- 原文抜粋に根拠がない情報は書かない。推測・創作・一般論で埋めない。
+- 重要項目が原文に無ければ「不明」と明示する（テーブル内でも「不明」を使ってよい）。
+- タイトルをそのまま繰り返さない。
+- 出典リンクや「詳細は出典を参照…」などの文言は書かない（別UIで表示される）。`;
 
 export interface SummarizeInput {
   title: string;
@@ -36,7 +45,7 @@ export async function summarizeArticle(input: SummarizeInput): Promise<Summarize
   const userPrompt = [
     `出典: ${input.source_name}`,
     `タイトル: ${input.title}`,
-    input.excerpt ? `抜粋:\n${input.excerpt.slice(0, 1200)}` : null,
+    input.excerpt ? `抜粋:\n${input.excerpt.slice(0, 1800)}` : null,
   ]
     .filter(Boolean)
     .join('\n');
@@ -44,7 +53,7 @@ export async function summarizeArticle(input: SummarizeInput): Promise<Summarize
   const res = await withRetry(() =>
     client.messages.create({
       model: SUMMARIZER_MODEL,
-      max_tokens: 400,
+      max_tokens: 800,
       temperature: 0.2,
       system: SYSTEM_INSTRUCTION,
       messages: [{ role: 'user', content: userPrompt }],

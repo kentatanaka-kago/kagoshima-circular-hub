@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { Summary } from '@/components/Summary';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
@@ -43,10 +44,13 @@ export default async function NewsDetail({
 
       {article.ai_summary && (
         <section className="rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-5 py-4">
-          <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300 mb-1">AI要約（実務ダイジェスト）</div>
-          <p className="text-sm leading-relaxed text-emerald-950 dark:text-emerald-100 whitespace-pre-wrap">{article.ai_summary}</p>
+          <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300 mb-2">AI要約（実務ダイジェスト）</div>
+          <Summary
+            markdown={article.ai_summary}
+            className="text-sm leading-relaxed text-emerald-950 dark:text-emerald-100"
+          />
           {article.ai_summary_model && (
-            <p className="mt-2 text-[10px] text-emerald-700 dark:text-emerald-400">by {article.ai_summary_model}</p>
+            <p className="mt-3 text-[10px] text-emerald-700 dark:text-emerald-400">by {article.ai_summary_model}</p>
           )}
         </section>
       )}

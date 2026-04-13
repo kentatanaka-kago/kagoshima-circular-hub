@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { Summary } from '@/components/Summary';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
@@ -9,6 +10,24 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('ja-JP', {
     year: 'numeric', month: 'short', day: 'numeric',
   });
+}
+
+// Card previews: show only the opening paragraph so markdown tables
+// don't get clipped weirdly inside line-clamp.
+function firstParagraph(md: string): string {
+  const lines = md.split('\n');
+  const chunks: string[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) {
+      if (chunks.length > 0) break;
+      continue;
+    }
+    // Stop before tables / headings
+    if (t.startsWith('|') || t.startsWith('#')) break;
+    chunks.push(line);
+  }
+  return chunks.join('\n').trim() || md.slice(0, 200);
 }
 
 export default async function Home() {
@@ -52,7 +71,10 @@ export default async function Home() {
               <Link href={`/news/${a.id}`} className="hover:underline">{a.title}</Link>
             </h2>
             {a.ai_summary && (
-              <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300 line-clamp-3">{a.ai_summary}</p>
+              <Summary
+                markdown={firstParagraph(a.ai_summary)}
+                className="mt-2 text-sm text-zinc-700 dark:text-zinc-300 line-clamp-3"
+              />
             )}
             {a.tags?.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
