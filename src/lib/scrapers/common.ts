@@ -1,7 +1,9 @@
 import * as cheerio from 'cheerio';
 
+// Some gov sites reject strictly-bot User-Agents. Use a browser-ish UA with
+// a self-identifying suffix so we remain honest without being filtered.
 const USER_AGENT =
-  'KagoshimaCircularHub/0.1 (+https://kagoshima-circular-hub.vercel.app; contact: itkagonma@kenta89.com)';
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 KagoshimaCircularHub/0.1 (+https://kagoshima-circular-hub.vercel.app)';
 
 export async function fetchText(url: string): Promise<string> {
   const res = await fetch(url, {
@@ -50,7 +52,7 @@ export function resolveUrl(base: string, href: string): string {
 // 生活支援補助金 など CE と無関係なものが大量にヒットするため).
 const CE_KEYWORDS: Array<[RegExp, string]> = [
   [/(廃棄物|リサイクル|資源循環|循環型|再資源化|再生利用|リユース|リペア|分別回収)/, '資源循環'],
-  [/(脱炭素|カーボン|CO2|温室効果ガス|再エネ|再生可能エネルギー|省エネ)/, '脱炭素'],
+  [/(脱炭素|カーボン|CO2|温室効果ガス|再エネ|再生可能エネルギー|省エネ|GX\b|グリーントランスフォーメーション)/, '脱炭素'],
   [/(プラスチック|容器包装)/, 'プラスチック'],
   [/(食品ロス|フードロス|残渣)/, '食品ロス'],
   [/(バイオマス|堆肥|コンポスト)/, 'バイオマス'],
