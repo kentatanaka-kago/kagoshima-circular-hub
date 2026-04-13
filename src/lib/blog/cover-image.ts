@@ -1,6 +1,10 @@
 import { GoogleGenAI } from '@google/genai';
+import sharp from 'sharp';
 
 export const COVER_IMAGE_MODEL = 'gemini-2.5-flash-image';
+// note.com recommended cover size; we centre-crop the model's square output.
+const NOTE_COVER_WIDTH = 1280;
+const NOTE_COVER_HEIGHT = 670;
 
 function getClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -40,14 +44,24 @@ export async function generateCoverImage(input: CoverImageInput): Promise<CoverI
   const parts = res.candidates?.[0]?.content?.parts ?? [];
   for (const p of parts) {
     if (p.inlineData?.data) {
-      return {
-        pngBuffer: Buffer.from(p.inlineData.data, 'base64'),
-        model: COVER_IMAGE_MODEL,
-        prompt,
-      };
+      const raw = Buffer.from(p.inlineData.data, 'base64');
+      const pngBuffer = await resizeToNoteCover(raw);
+      return { pngBuffer, model: COVER_IMAGE_MODEL, prompt };
     }
   }
   throw new Error('Gemini did not return image data');
+}
+
+async function resizeToNoteCover(buf: Buffer): Promise<Buffer> {
+  return sharp(buf)
+    .resize({
+      width: NOTE_COVER_WIDTH,
+      height: NOTE_COVER_HEIGHT,
+      fit: 'cover',
+      position: 'centre',
+    })
+    .png()
+    .toBuffer();
 }
 
 function buildPrompt(input: CoverImageInput): string {
