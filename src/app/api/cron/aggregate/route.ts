@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { kagoshimaCityScraper } from '@/lib/scrapers/kagoshima-city';
 import { kagoshimaPrefScraper } from '@/lib/scrapers/kagoshima-pref';
@@ -52,6 +53,11 @@ export async function GET(req: Request) {
   }
 
   const summarized = await backfillSummaries(admin);
+
+  if (inserted > 0 || summarized.ok > 0) {
+    revalidatePath('/');
+    revalidatePath('/calendar');
+  }
 
   return NextResponse.json({
     ok: true,

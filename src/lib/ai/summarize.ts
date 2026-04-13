@@ -1,11 +1,11 @@
-import { GoogleGenAI } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
 
-export const SUMMARIZER_MODEL = 'gemini-2.5-flash';
+export const SUMMARIZER_MODEL = 'claude-haiku-4-5-20251001';
 
-function getClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
-  return new GoogleGenAI({ apiKey });
+function getClient(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set');
+  return new Anthropic({ apiKey });
 }
 
 const SYSTEM_INSTRUCTION = `あなたは鹿児島県のサーキュラーエコノミー実務担当者向けに行政発表を要約する編集者です。
@@ -27,7 +27,7 @@ export interface SummarizeOutput {
 }
 
 export async function summarizeArticle(input: SummarizeInput): Promise<SummarizeOutput> {
-  const ai = getClient();
+  const client = getClient();
   const userPrompt = [
     `出典: ${input.source_name}`,
     `タイトル: ${input.title}`,
@@ -37,19 +37,21 @@ export async function summarizeArticle(input: SummarizeInput): Promise<Summarize
     .join('\n');
 
   const res = await withRetry(() =>
-    ai.models.generateContent({
+    client.messages.create({
       model: SUMMARIZER_MODEL,
-      contents: userPrompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.2,
-        maxOutputTokens: 400,
-      },
+      max_tokens: 400,
+      temperature: 0.2,
+      system: SYSTEM_INSTRUCTION,
+      messages: [{ role: 'user', content: userPrompt }],
     }),
   );
 
-  const text = (res.text ?? '').trim();
-  if (!text) throw new Error('empty summary from Gemini');
+  const text = res.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+    .trim();
+  if (!text) throw new Error('empty summary from Claude');
   return { summary: text, model: SUMMARIZER_MODEL };
 }
 
@@ -60,9 +62,9 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
       return await fn();
     } catch (e) {
       lastError = e;
-      const msg = e instanceof Error ? e.message : String(e);
-      // Retry only on transient upstream conditions; fail fast on 4xx client errors other than 429.
-      const retriable = /\b(503|502|504|UNAVAILABLE)\b/i.test(msg) || /\b(429|RESOURCE_EXHAUSTED)\b/i.test(msg);
+      const status = (e as { status?: number } | null)?.status;
+      const retriable =
+        status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
       if (!retriable || attempt === maxAttempts) throw e;
       const backoff = Math.min(8000, 500 * 2 ** (attempt - 1)) + Math.random() * 300;
       await new Promise((r) => setTimeout(r, backoff));
