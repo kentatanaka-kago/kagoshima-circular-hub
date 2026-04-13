@@ -16,8 +16,8 @@
 | フロントエンド | Next.js (TypeScript) | App Router, Tailwind CSS |
 | ホスティング | Vercel | GitHubと連携済み |
 | データベース | Supabase (PostgreSQL) | CLIセットアップ済み |
-| バックエンド処理 | Supabase Edge Functions | スクレイピング・バッチ処理 |
-| AI要約エンジン | OpenAI API (GPT-4o) | 行政PDFの実務サマリー化 |
+| バックエンド処理 | Vercel Cron + Next.js Route Handler | スクレイピング・バッチ処理（毎朝06:40 JST） |
+| AI要約エンジン | Anthropic Claude Haiku 4.5 | 行政発表の実務サマリー化（`@anthropic-ai/sdk`） |
 
 ---
 
@@ -80,12 +80,14 @@
 ## 作業開始時の確認事項
 
 1. `npm run dev` でローカル起動できるか確認
-2. Supabaseプロジェクトの作成・接続設定
+2. Supabaseプロジェクトの作成・接続設定（`ref: sbudwgshbpccuhebizua`）
 3. Vercelへの初回デプロイ（`vercel --prod`）
 4. 環境変数（`.env.local`）の設定
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `OPENAI_API_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`（サーバ側書き込み用）
+   - `ANTHROPIC_API_KEY`（AI要約）
+   - `CRON_SECRET`（Vercel Cron 認証）
 
 ---
 
