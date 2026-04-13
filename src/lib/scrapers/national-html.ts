@@ -10,33 +10,37 @@ export interface NationalHtmlConfig {
   urlPrefix?: string; // Optional allowlist — only keep links starting with this prefix.
 }
 
+export function parseNationalHtml(config: NationalHtmlConfig, html: string): ScrapedArticle[] {
+  const items = config.extractItems(html);
+  const seen = new Set<string>();
+  const out: ScrapedArticle[] = [];
+  for (const item of items) {
+    const url = resolveUrl(config.indexUrl, item.url);
+    if (config.urlPrefix && !url.startsWith(config.urlPrefix)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const tags = extractTags(item.title);
+    if (relevanceScoreFor(tags) === 0) continue;
+    out.push({
+      source_type: 'national',
+      source_id: config.id,
+      source_name: config.name,
+      source_url: url,
+      title: item.title.trim(),
+      published_at: item.publishedAt,
+      raw_excerpt: null,
+      tags,
+    });
+  }
+  return out;
+}
+
 export function createNationalHtmlScraper(config: NationalHtmlConfig): Scraper {
   return {
     name: `national-${config.id}`,
     async run(): Promise<ScrapedArticle[]> {
       const html = await fetchText(config.indexUrl);
-      const items = config.extractItems(html);
-      const seen = new Set<string>();
-      const out: ScrapedArticle[] = [];
-      for (const item of items) {
-        const url = resolveUrl(config.indexUrl, item.url);
-        if (config.urlPrefix && !url.startsWith(config.urlPrefix)) continue;
-        if (seen.has(url)) continue;
-        seen.add(url);
-        const tags = extractTags(item.title);
-        if (relevanceScoreFor(tags) === 0) continue;
-        out.push({
-          source_type: 'national',
-          source_id: config.id,
-          source_name: config.name,
-          source_url: url,
-          title: item.title.trim(),
-          published_at: item.publishedAt,
-          raw_excerpt: null,
-          tags,
-        });
-      }
-      return out;
+      return parseNationalHtml(config, html);
     },
   };
 }

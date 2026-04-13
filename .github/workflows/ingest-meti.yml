@@ -1,0 +1,45 @@
+name: Ingest METI press releases
+
+# METI's CDN blocks Vercel IP ranges (ETIMEDOUT from both iad1 and hnd1).
+# GitHub-hosted runners use Azure IPs, which METI accepts. We fetch from
+# GitHub and POST the raw HTML to our Vercel app; the Vercel handler
+# parses it and runs the normal pipeline.
+
+on:
+  schedule:
+    # 19:30 UTC = 04:30 JST, 30 minutes before the Vercel cron so any
+    # new METI articles get summarised in the same JST morning.
+    - cron: '30 19 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch METI press index
+        run: |
+          curl -sSLf \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            -A 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+            -H 'Accept: text/html,application/xhtml+xml' \
+            -H 'Accept-Language: ja,en-US;q=0.7,en;q=0.3' \
+            -o meti.html \
+            https://www.meti.go.jp/press/
+          echo "bytes=$(wc -c < meti.html)"
+
+      - name: POST to Vercel ingest endpoint
+        env:
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+        run: |
+          if [ -z "$INGEST_SECRET" ]; then
+            echo "INGEST_SECRET repo secret is missing" >&2
+            exit 1
+          fi
+          curl -sSf -X POST \
+            -H "Authorization: Bearer $INGEST_SECRET" \
+            -H 'Content-Type: text/html; charset=utf-8' \
+            --data-binary @meti.html \
+            --max-time 300 \
+            https://kagoshima-circular-hub.vercel.app/api/ingest/meti
+          echo

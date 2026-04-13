@@ -1,11 +1,17 @@
-import { createNationalHtmlScraper, parseJpDateLoose } from './national-html';
+import {
+  createNationalHtmlScraper,
+  parseJpDateLoose,
+  parseNationalHtml,
+  type NationalHtmlConfig,
+} from './national-html';
+import type { ScrapedArticle } from './types';
 
 // METI press index: "2026年4月13日" text preceding a press-release anchor
 // within /press/YYYY/MM/... paths.
 const DATE_LINK_RE =
   /(20\d{2}年\d{1,2}月\d{1,2}日)[\s\S]{0,200}?<a[^>]+href="(\/press\/[^"]+\.html)"[^>]*>([^<]{8,120})<\/a>/g;
 
-export const metiScraper = createNationalHtmlScraper({
+export const metiConfig: NationalHtmlConfig = {
   id: 'meti.go.jp',
   name: '経済産業省',
   indexUrl: 'https://www.meti.go.jp/press/',
@@ -23,4 +29,10 @@ export const metiScraper = createNationalHtmlScraper({
     }
     return out;
   },
-});
+};
+
+export const metiScraper = createNationalHtmlScraper(metiConfig);
+
+export function parseMetiHtml(html: string): ScrapedArticle[] {
+  return parseNationalHtml(metiConfig, html);
+}
