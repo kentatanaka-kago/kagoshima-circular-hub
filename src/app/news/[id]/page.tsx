@@ -51,14 +51,10 @@ export default async function NewsDetail({
         </section>
       )}
 
-      {article.raw_excerpt && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-600 dark:text-zinc-400 mb-2">原文抜粋</h2>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{article.raw_excerpt}</p>
-        </section>
-      )}
-
-      <section className="pt-4 border-t border-zinc-200 dark:border-zinc-800">
+      <section className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
+        <p className="text-xs text-zinc-500">
+          AI要約は補助的な表示です。正確な条件・金額・締切は必ず出典元でご確認ください。
+        </p>
         <a
           href={article.source_url}
           target="_blank"
