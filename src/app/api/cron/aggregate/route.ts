@@ -8,10 +8,7 @@ import { kanoyaScraper } from '@/lib/scrapers/kanoya';
 import { makurazakiScraper } from '@/lib/scrapers/makurazaki';
 import { airaScraper } from '@/lib/scrapers/aira';
 import { envGoJpScraper } from '@/lib/scrapers/env-go-jp';
-// METI (経産省) is temporarily disabled — www.meti.go.jp refuses
-// connections from Vercel's function network (ETIMEDOUT both from iad1
-// and hnd1). Revisit when we have a workable proxy or a manual seed.
-// import { metiScraper } from '@/lib/scrapers/meti';
+import { metiScraper } from '@/lib/scrapers/meti';
 import { maffScraper } from '@/lib/scrapers/maff';
 import { soumuScraper } from '@/lib/scrapers/soumu';
 import { fetchArticlePage } from '@/lib/scrapers/body';
@@ -29,7 +26,7 @@ const SCRAPERS = [
   makurazakiScraper,
   airaScraper,
   envGoJpScraper,
-  // metiScraper,  // temporarily disabled — see import note
+  metiScraper,
   maffScraper,
   soumuScraper,
 ];
