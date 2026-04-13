@@ -1,29 +1,7 @@
-import { extractTags, fetchText, parseRssItems, relevanceScoreFor } from './common';
-import type { Scraper, ScrapedArticle } from './types';
+import { createMunicipalityRssScraper } from './municipality-rss';
 
-const RSS_URL = 'https://www.pref.kagoshima.jp/saishin/saishin.xml';
-const SOURCE_ID = '46000';
-const SOURCE_NAME = '鹿児島県';
-
-export const kagoshimaPrefScraper: Scraper = {
-  name: 'kagoshima-pref',
-  async run(): Promise<ScrapedArticle[]> {
-    const xml = await fetchText(RSS_URL);
-    const out: ScrapedArticle[] = [];
-    for (const item of parseRssItems(xml)) {
-      const tags = extractTags(item.title);
-      if (relevanceScoreFor(tags) === 0) continue;
-      out.push({
-        source_type: 'municipality',
-        source_id: SOURCE_ID,
-        source_name: SOURCE_NAME,
-        source_url: item.link,
-        title: item.title,
-        published_at: item.publishedAt,
-        raw_excerpt: null,
-        tags,
-      });
-    }
-    return out;
-  },
-};
+export const kagoshimaPrefScraper = createMunicipalityRssScraper({
+  id: '46000',
+  name: '鹿児島県',
+  rssUrl: 'https://www.pref.kagoshima.jp/saishin/saishin.xml',
+});

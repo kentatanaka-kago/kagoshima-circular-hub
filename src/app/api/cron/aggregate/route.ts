@@ -3,6 +3,8 @@ import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { kagoshimaCityScraper } from '@/lib/scrapers/kagoshima-city';
 import { kagoshimaPrefScraper } from '@/lib/scrapers/kagoshima-pref';
+import { kirishimaScraper } from '@/lib/scrapers/kirishima';
+import { kanoyaScraper } from '@/lib/scrapers/kanoya';
 import { envGoJpScraper } from '@/lib/scrapers/env-go-jp';
 import { fetchArticlePage } from '@/lib/scrapers/body';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
@@ -11,7 +13,13 @@ import { summarizeArticle } from '@/lib/ai/summarize';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const SCRAPERS = [kagoshimaCityScraper, kagoshimaPrefScraper, envGoJpScraper];
+const SCRAPERS = [
+  kagoshimaCityScraper,
+  kagoshimaPrefScraper,
+  kirishimaScraper,
+  kanoyaScraper,
+  envGoJpScraper,
+];
 const BODY_BATCH = 40;
 const BODY_CONCURRENCY = 4;
 const SUMMARIZE_BATCH = 40;
