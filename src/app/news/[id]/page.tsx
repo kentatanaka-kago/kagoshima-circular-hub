@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
 import { CopyMenu } from '@/components/CopyMenu';
-import { formatDateJST, isPublishedToday } from '@/lib/format';
+import { formatDateJST, isRecentlyPublished } from '@/lib/format';
 import { toExport } from '@/lib/export';
 import type { NewsArticle } from '@/lib/database.types';
 
@@ -23,7 +23,7 @@ export default async function NewsDetail({
 
   if (error || !data) notFound();
   const article = data as NewsArticle;
-  const isNew = isPublishedToday(article.published_at);
+  const isNew = isRecentlyPublished(article.published_at);
 
   return (
     <article className="space-y-6 max-w-3xl">

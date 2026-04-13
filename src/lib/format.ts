@@ -37,3 +37,11 @@ export function isPublishedToday(iso: string | null): boolean {
   const d = ymdJST(iso);
   return d !== null && d === ymdJST(new Date().toISOString());
 }
+
+// NEW badge uses a rolling 24h window on published_at.
+export function isRecentlyPublished(iso: string | null, hours = 24): boolean {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t < hours * 60 * 60 * 1000;
+}

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
 import { CopyMenu } from '@/components/CopyMenu';
-import { formatDateJST, isPublishedToday } from '@/lib/format';
+import { formatDateJST, isRecentlyPublished } from '@/lib/format';
 import { toExport } from '@/lib/export';
 import type { NewsArticle } from '@/lib/database.types';
 
@@ -132,7 +132,7 @@ export default async function Home({
               </div>
             </div>
             <h2 className="mt-2 font-medium leading-snug flex items-baseline gap-2">
-              {isPublishedToday(a.published_at) && (
+              {isRecentlyPublished(a.published_at) && (
                 <span className="shrink-0 rounded bg-rose-500 text-white text-[10px] font-semibold px-1.5 py-0.5 leading-none uppercase tracking-wide">NEW</span>
               )}
               <Link href={`/news/${a.id}`} className="hover:underline">{a.title}</Link>
