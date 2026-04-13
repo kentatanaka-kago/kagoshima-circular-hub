@@ -7,8 +7,14 @@ const USER_AGENT =
 
 export async function fetchText(url: string): Promise<string> {
   const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml,application/rss+xml,application/xml' },
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept: 'text/html,application/xhtml+xml,application/rss+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+      'Accept-Encoding': 'gzip, deflate',
+    },
     cache: 'no-store',
+    redirect: 'follow',
   });
   if (!res.ok) throw new Error(`fetch ${url} failed: ${res.status}`);
   const buffer = Buffer.from(await res.arrayBuffer());
