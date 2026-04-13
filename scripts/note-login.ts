@@ -1,18 +1,15 @@
-// Run this ONCE manually to capture an authenticated session for note.com.
-// The script opens a visible browser. Log in through the real flow
-// (email/password, Google SSO — whatever you use), then come back to the
-// terminal and press Enter. The cookies + localStorage get saved to
-// auth/note-state.json and reused by the publisher script indefinitely
-// (note sessions are long-lived).
-//
-// Usage:
+// One-time auth capture for note.com.
+// 使い方:
 //   npx tsx scripts/note-login.ts
+// スクリプトがブラウザを開くので、note.com にログインしてください。
+// ログインが完了して URL が /login から外れた時点で自動的にセッションを
+// auth/note-state.json に保存してブラウザを閉じます。手動の Enter は不要。
 import fs from 'node:fs';
-import readline from 'node:readline/promises';
 import { chromium } from 'playwright';
 
 const STATE_PATH = 'auth/note-state.json';
 const LOGIN_URL = 'https://note.com/login';
+const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes to finish login
 
 async function main() {
   fs.mkdirSync('auth', { recursive: true });
@@ -23,28 +20,47 @@ async function main() {
 
   console.log(`Opening ${LOGIN_URL} …`);
   await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+
   console.log('');
-  console.log('▶ ブラウザでログインしてください（メール+パスワード or Google SSO）。');
-  console.log('  ログイン完了して note のトップページ（自分のダッシュボード）に遷移したら、');
-  console.log('  このターミナルに戻って Enter を押してください。');
+  console.log('▶ ブラウザで note にログインしてください。');
+  console.log('  ログインが完了すれば自動的にセッションを保存してブラウザを閉じます。');
+  console.log('  （5分以内にログインを完了してください）');
   console.log('');
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  await rl.question('ログインが完了したら Enter →');
-  rl.close();
+  const start = Date.now();
+  let saved = false;
 
-  const url = page.url();
-  console.log(`現在の URL: ${url}`);
-  if (url.includes('/login')) {
-    console.error('⚠ まだ /login のままです。ログインをもう一度試してから実行してください。');
-    await browser.close();
-    process.exit(1);
+  // Poll until we're no longer on /login and the page looks authenticated.
+  // Give the user up to TIMEOUT_MS.
+  while (Date.now() - start < TIMEOUT_MS) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const url = page.url();
+      if (url.startsWith('https://note.com/login')) continue;
+      if (url.startsWith('https://note.com/signup')) continue;
+      if (!url.startsWith('https://note.com/') && !url.startsWith('https://editor.note.com/')) {
+        // may be a 3rd-party OAuth step (Google, Apple). Keep waiting.
+        continue;
+      }
+      // Stay on URL for ~2s to make sure navigation settled
+      await new Promise((r) => setTimeout(r, 2000));
+      if (page.url() === url) {
+        await context.storageState({ path: STATE_PATH });
+        console.log(`✓ セッションを ${STATE_PATH} に保存しました (URL: ${url})`);
+        saved = true;
+        break;
+      }
+    } catch {
+      // page might still be navigating; keep polling
+    }
   }
 
-  await context.storageState({ path: STATE_PATH });
-  console.log(`✓ セッションを ${STATE_PATH} に保存しました。`);
+  if (!saved) {
+    console.error('⚠ タイムアウト: 5分以内にログインが完了しませんでした。もう一度実行してください。');
+  }
 
   await browser.close();
+  process.exit(saved ? 0 : 1);
 }
 
 main().catch((e) => {
