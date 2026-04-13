@@ -24,9 +24,11 @@ export function resolveUrl(base: string, href: string): string {
   }
 }
 
-const KEYWORDS: Array<[RegExp, string]> = [
-  [/(補助金|助成|交付金)/, '補助金'],
-  [/(廃棄物|リサイクル|資源循環|再資源化|再生利用)/, '資源循環'],
+// CE keywords — at least one of these must match for the article to be
+// considered relevant. "補助金" alone is NOT a CE signal (税務取扱い、
+// 生活支援補助金 など CE と無関係なものが大量にヒットするため).
+const CE_KEYWORDS: Array<[RegExp, string]> = [
+  [/(廃棄物|リサイクル|資源循環|循環型|再資源化|再生利用|リユース|リペア|分別回収)/, '資源循環'],
   [/(脱炭素|カーボン|CO2|温室効果ガス|再エネ|再生可能エネルギー|省エネ)/, '脱炭素'],
   [/(プラスチック|容器包装)/, 'プラスチック'],
   [/(食品ロス|フードロス|残渣)/, '食品ロス'],
@@ -34,15 +36,24 @@ const KEYWORDS: Array<[RegExp, string]> = [
   [/(サーキュラー|循環経済)/, 'サーキュラー'],
 ];
 
+// Secondary tags — attached only when a CE keyword is already present.
+const SECONDARY_KEYWORDS: Array<[RegExp, string]> = [
+  [/(補助金|助成|交付金)/, '補助金'],
+];
+
 export function extractTags(text: string): string[] {
   const found = new Set<string>();
-  for (const [re, tag] of KEYWORDS) if (re.test(text)) found.add(tag);
+  for (const [re, tag] of CE_KEYWORDS) if (re.test(text)) found.add(tag);
+  if (found.size > 0) {
+    for (const [re, tag] of SECONDARY_KEYWORDS) if (re.test(text)) found.add(tag);
+  }
   return [...found];
 }
 
 export function relevanceScoreFor(tags: string[]): number {
-  if (tags.length === 0) return 0;
-  return Math.min(100, tags.length * 25);
+  const ceCount = tags.filter((t) => t !== '補助金').length;
+  if (ceCount === 0) return 0;
+  return Math.min(100, ceCount * 25);
 }
 
 // Regex-based RSS parsing — cheerio's XML mode mishandles namespaced
