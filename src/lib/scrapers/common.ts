@@ -9,7 +9,28 @@ export async function fetchText(url: string): Promise<string> {
     cache: 'no-store',
   });
   if (!res.ok) throw new Error(`fetch ${url} failed: ${res.status}`);
-  return res.text();
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const charset = detectCharset(res.headers.get('content-type'), buffer);
+  try {
+    return new TextDecoder(charset).decode(buffer);
+  } catch {
+    return new TextDecoder('utf-8').decode(buffer);
+  }
+}
+
+function detectCharset(contentType: string | null, buffer: Buffer): string {
+  const fromHeader = contentType?.match(/charset=([^;\s]+)/i)?.[1];
+  if (fromHeader) return normalizeCharset(fromHeader);
+  const head = buffer.subarray(0, 2048).toString('ascii');
+  const fromMeta = head.match(/charset=["']?([a-zA-Z0-9_-]+)/i)?.[1];
+  return normalizeCharset(fromMeta ?? 'utf-8');
+}
+
+function normalizeCharset(c: string): string {
+  const k = c.toLowerCase();
+  if (k === 'shift_jis' || k === 'shift-jis' || k === 'x-sjis') return 'shift-jis';
+  if (k === 'euc-jp' || k === 'eucjp') return 'euc-jp';
+  return k;
 }
 
 export async function fetchHtml(url: string): Promise<cheerio.CheerioAPI> {

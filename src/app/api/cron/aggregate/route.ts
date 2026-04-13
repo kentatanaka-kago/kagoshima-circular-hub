@@ -8,6 +8,9 @@ import { kanoyaScraper } from '@/lib/scrapers/kanoya';
 import { makurazakiScraper } from '@/lib/scrapers/makurazaki';
 import { airaScraper } from '@/lib/scrapers/aira';
 import { envGoJpScraper } from '@/lib/scrapers/env-go-jp';
+import { metiScraper } from '@/lib/scrapers/meti';
+import { maffScraper } from '@/lib/scrapers/maff';
+import { soumuScraper } from '@/lib/scrapers/soumu';
 import { fetchArticlePage } from '@/lib/scrapers/body';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
 import { summarizeArticle } from '@/lib/ai/summarize';
@@ -23,6 +26,9 @@ const SCRAPERS = [
   makurazakiScraper,
   airaScraper,
   envGoJpScraper,
+  metiScraper,
+  maffScraper,
+  soumuScraper,
 ];
 const BODY_BATCH = 40;
 const BODY_CONCURRENCY = 4;
