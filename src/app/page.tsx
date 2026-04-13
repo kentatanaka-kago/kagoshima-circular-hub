@@ -4,6 +4,7 @@ import { Summary } from '@/components/Summary';
 import { CopyMenu } from '@/components/CopyMenu';
 import { formatDateJST, isRecentlyPublished } from '@/lib/format';
 import { toExport } from '@/lib/export';
+import { sourceChipClass } from '@/lib/source-color';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
@@ -86,9 +87,13 @@ export default async function Home({
           <span className="text-xs font-medium text-zinc-500 mr-1">出典:</span>
           <FilterPill href={buildQuery(filters, { source: null })} active={!filters.source}>すべて</FilterPill>
           {sourceNames.map((s) => (
-            <FilterPill key={s} href={buildQuery(filters, { source: s })} active={filters.source === s}>
-              {s} <span className="text-zinc-400">({sourceCounts[s]})</span>
-            </FilterPill>
+            <SourcePill
+              key={s}
+              href={buildQuery(filters, { source: s })}
+              active={filters.source === s}
+              name={s}
+              count={sourceCounts[s]}
+            />
           ))}
         </div>
         {activeFilter && (
@@ -121,7 +126,7 @@ export default async function Home({
             <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
               <Link
                 href={buildQuery(filters, { source: a.source_name })}
-                className="font-medium hover:text-zinc-900 dark:hover:text-zinc-100 hover:underline"
+                className={`rounded-full px-2 py-0.5 font-medium hover:opacity-80 transition-opacity ${sourceChipClass(a.source_name)}`}
               >
                 {a.source_name}
               </Link>
@@ -174,6 +179,16 @@ function FilterPill({ href, active, children }: { href: string; active: boolean;
       }
     >
       {children}
+    </Link>
+  );
+}
+
+function SourcePill({ href, active, name, count }: { href: string; active: boolean; name: string; count: number }) {
+  const base = 'rounded-full px-3 py-1 text-xs font-medium transition-opacity';
+  const activeRing = active ? 'ring-2 ring-offset-1 ring-zinc-900 dark:ring-zinc-100 dark:ring-offset-zinc-950' : 'hover:opacity-80';
+  return (
+    <Link href={href} className={`${base} ${sourceChipClass(name)} ${activeRing}`}>
+      {name} <span className="opacity-60">({count})</span>
     </Link>
   );
 }

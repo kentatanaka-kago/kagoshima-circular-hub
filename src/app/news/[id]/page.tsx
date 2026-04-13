@@ -5,6 +5,7 @@ import { Summary } from '@/components/Summary';
 import { CopyMenu } from '@/components/CopyMenu';
 import { formatDateJST, isRecentlyPublished } from '@/lib/format';
 import { toExport } from '@/lib/export';
+import { sourceChipClass } from '@/lib/source-color';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
@@ -33,7 +34,9 @@ export default async function NewsDetail({
 
       <header className="space-y-3">
         <div className="flex items-baseline gap-3 text-xs text-zinc-500">
-          <span>{article.source_name}</span>
+          <span className={`rounded-full px-2 py-0.5 font-medium ${sourceChipClass(article.source_name)}`}>
+            {article.source_name}
+          </span>
           <time>{formatDateJST(article.published_at, 'long')}</time>
         </div>
         <h1 className="text-2xl font-semibold tracking-tight flex items-baseline gap-3 flex-wrap">
