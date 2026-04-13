@@ -3,13 +3,11 @@ import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
 import { CopyMenu } from '@/components/CopyMenu';
-import { formatDateJST } from '@/lib/format';
+import { formatDateJST, isPublishedToday } from '@/lib/format';
 import { toExport } from '@/lib/export';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
-
-const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export default async function NewsDetail({
   params,
@@ -25,7 +23,7 @@ export default async function NewsDetail({
 
   if (error || !data) notFound();
   const article = data as NewsArticle;
-  const isNew = Date.now() - new Date(article.created_at).getTime() < NEW_WINDOW_MS;
+  const isNew = isPublishedToday(article.published_at);
 
   return (
     <article className="space-y-6 max-w-3xl">
