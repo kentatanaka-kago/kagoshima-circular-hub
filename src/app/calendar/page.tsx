@@ -1,13 +1,11 @@
 import { supabase } from '@/lib/supabase';
+import { formatDateJST } from '@/lib/format';
 import type { Subsidy } from '@/lib/database.types';
 
 export const revalidate = 600;
 
 function formatDate(d: string | null) {
-  if (!d) return '未定';
-  return new Date(d).toLocaleDateString('ja-JP', {
-    year: 'numeric', month: 'numeric', day: 'numeric',
-  });
+  return d ? formatDateJST(d) : '未定';
 }
 
 function daysUntil(d: string | null): number | null {

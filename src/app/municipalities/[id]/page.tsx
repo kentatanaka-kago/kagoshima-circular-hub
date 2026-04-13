@@ -1,16 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { formatDateJST } from '@/lib/format';
 import type { Municipality, NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 600;
 
-function formatDate(iso: string | null) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ja-JP', {
-    year: 'numeric', month: 'short', day: 'numeric',
-  });
-}
+const formatDate = (iso: string | null) => formatDateJST(iso);
 
 export default async function MunicipalityPage({
   params,

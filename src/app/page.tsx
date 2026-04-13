@@ -1,18 +1,12 @@
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
+import { formatDateJST } from '@/lib/format';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
 
 const ALL_TAGS = ['補助金', '資源循環', '脱炭素', 'プラスチック', '食品ロス', 'バイオマス', 'サーキュラー'];
-
-function formatDate(iso: string | null) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ja-JP', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  });
-}
 
 function firstParagraph(md: string): string {
   const lines = md.split('\n');
@@ -124,9 +118,9 @@ export default async function Home({
                 {a.source_name}
               </Link>
               <div className="flex items-center gap-3 tabular-nums">
-                <span>発表 {formatDate(a.published_at)}</span>
+                <span>発表 {formatDateJST(a.published_at)}</span>
                 <span className="text-zinc-400">·</span>
-                <span>更新 {formatDate(a.scraped_at)}</span>
+                <span>更新 {formatDateJST(a.scraped_at)}</span>
               </div>
             </div>
             <h2 className="mt-2 font-medium leading-snug">

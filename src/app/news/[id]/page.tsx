@@ -2,16 +2,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
+import { formatDateJST } from '@/lib/format';
 import type { NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
-
-function formatDate(iso: string | null) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ja-JP', {
-    year: 'numeric', month: 'long', day: 'numeric',
-  });
-}
 
 export default async function NewsDetail({
   params,
@@ -37,7 +31,7 @@ export default async function NewsDetail({
       <header className="space-y-3">
         <div className="flex items-baseline gap-3 text-xs text-zinc-500">
           <span>{article.source_name}</span>
-          <time>{formatDate(article.published_at)}</time>
+          <time>{formatDateJST(article.published_at, 'long')}</time>
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">{article.title}</h1>
       </header>
