@@ -63,6 +63,23 @@ export default async function NewsDetail({
         </section>
       )}
 
+      {article.note_post_url && (
+        <section className="rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-5 space-y-2">
+          <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">解説ブログを note に公開中</div>
+          <h2 className="font-medium text-emerald-950 dark:text-emerald-100">
+            {article.blog_title ?? '解説記事'}
+          </h2>
+          <a
+            href={article.note_post_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-1.5 transition-colors"
+          >
+            note で記事を読む ↗
+          </a>
+        </section>
+      )}
+
       <section className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
         <p className="text-xs text-zinc-500">
           AI要約は補助的な表示です。正確な条件・金額・締切は必ず出典元でご確認ください。

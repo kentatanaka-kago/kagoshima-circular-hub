@@ -148,9 +148,9 @@ export default async function Home({
                 className="mt-2 text-sm text-zinc-700 dark:text-zinc-300 line-clamp-3"
               />
             )}
-            {a.tags?.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {a.tags.map((t) => (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-1.5">
+                {a.tags?.map((t) => (
                   <Link
                     key={t}
                     href={buildQuery(filters, { tag: t })}
@@ -160,7 +160,18 @@ export default async function Home({
                   </Link>
                 ))}
               </div>
-            )}
+              {a.note_post_url && (
+                <a
+                  href={a.note_post_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1 transition-colors"
+                  title="note でこの記事の解説ブログを読む"
+                >
+                  note で読む ↗
+                </a>
+              )}
+            </div>
           </li>
         ))}
       </ul>

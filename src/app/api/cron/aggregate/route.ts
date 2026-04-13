@@ -14,6 +14,7 @@ import { soumuScraper } from '@/lib/scrapers/soumu';
 import { fetchArticlePage } from '@/lib/scrapers/body';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
 import { summarizeArticle } from '@/lib/ai/summarize';
+import { checkNotePublished } from '@/lib/note/check-published';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -80,7 +81,19 @@ export async function GET(req: Request) {
   const bodies = await backfillBodies(admin);
   const summarized = await backfillSummaries(admin);
 
-  if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0) {
+  let notePublished: Awaited<ReturnType<typeof checkNotePublished>> = {
+    rssItems: 0,
+    matched: 0,
+    updated: 0,
+    noteUsername: null,
+  };
+  try {
+    notePublished = await checkNotePublished(admin);
+  } catch (e) {
+    console.error('[cron] checkNotePublished failed:', (e as Error).message);
+  }
+
+  if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0 || notePublished.updated > 0) {
     revalidatePath('/');
     revalidatePath('/calendar');
   }
@@ -92,6 +105,7 @@ export async function GET(req: Request) {
     inserted,
     bodies,
     summarized,
+    notePublished,
   });
 }
 
