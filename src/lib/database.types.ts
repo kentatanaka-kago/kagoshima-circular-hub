@@ -25,6 +25,11 @@ export interface NewsArticle {
   relevance_score: number | null;
   scraped_at: string;
   created_at: string;
+  note_draft_url: string | null;
+  note_post_url: string | null;
+  note_posted_at: string | null;
+  blog_title: string | null;
+  blog_body: string | null;
 }
 
 export interface Subsidy {

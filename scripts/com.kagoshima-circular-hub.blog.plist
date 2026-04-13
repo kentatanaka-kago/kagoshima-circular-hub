@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kagoshima-circular-hub.blog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>/Users/tanakakenta/dev/kagoshima-circular-hub/scripts/run-daily-blog.sh</string>
+  </array>
+
+  <!-- 06:00 JST daily (after the 05:00 Vercel cron has refreshed the DB) -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/tanakakenta/dev/kagoshima-circular-hub/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tanakakenta/dev/kagoshima-circular-hub/logs/launchd.err.log</string>
+</dict>
+</plist>

@@ -39,6 +39,11 @@ yarn-error.log*
 # supabase CLI scratch
 supabase/.temp/
 
+# Note.com auth state (cookies) — never commit
+/auth/
+/drafts/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+logs/
