@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import { blocksToMarkdown, generateBlogPost } from '../src/lib/blog/generate';
+import { generateBlogPost } from '../src/lib/blog/generate';
 import type { Database, NewsArticle } from '../src/lib/database.types';
 
 function loadDotenv(file = '.env.local') {
@@ -63,13 +63,11 @@ async function main() {
     '',
   ].join('\n');
 
-  const body = blocksToMarkdown(post.blocks);
-  fs.writeFileSync(outPath, frontmatter + body + '\n');
+  fs.writeFileSync(outPath, frontmatter + post.body + '\n');
   console.log(`\nSaved → ${outPath}\n`);
   console.log('----- BLOG POST -----');
   console.log(`# ${post.title}\n`);
-  console.log(body);
-  console.log(`\nFigures: ${post.blocks.filter((b) => b.type !== 'markdown').length}`);
+  console.log(post.body);
 }
 
 main().catch((e) => {

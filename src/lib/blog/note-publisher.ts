@@ -1,17 +1,14 @@
 // Posts a generated blog post to note.com as a DRAFT.
-// Uses Playwright with a pre-captured session (auth/note-state.json).
+// Body images are intentionally not inserted — cover only.
 import fs from 'node:fs';
 import { chromium, type Page } from 'playwright';
-import type { BlogBlock } from './generate';
-import { generateFigureImage } from './cover-image';
-import { renderFigureHtmlToPng } from './figure-render';
 
 const STATE_PATH = 'auth/note-state.json';
 const EDITOR_URL = 'https://editor.note.com/new';
 
 export interface PublishInput {
   title: string;
-  blocks: BlogBlock[];
+  body: string;
   hashtags: string[];
   coverPng?: Buffer;
 }
@@ -19,7 +16,6 @@ export interface PublishInput {
 export interface PublishResult {
   draftUrl: string;
   screenshotPath?: string;
-  figureStats: { requested: number; rendered: number };
 }
 
 export async function publishToNoteDraft(input: PublishInput): Promise<PublishResult> {
@@ -51,72 +47,23 @@ export async function publishToNoteDraft(input: PublishInput): Promise<PublishRe
     const bodyLocator = page.locator('[contenteditable="true"][role="textbox"]').first();
     await bodyLocator.click();
 
-    // Cover image first (becomes the article thumbnail).
+    // Cover image: inserted first so note uses it as the thumbnail.
     if (input.coverPng) {
       try {
-        await insertEditorImage(page, input.coverPng);
+        console.log('  [publisher] inserting cover image…');
+        await insertCoverImage(page, input.coverPng);
+        console.log('  [publisher] cover image inserted');
         await bodyLocator.click();
         await page.keyboard.press('End');
         await page.keyboard.press('Enter');
       } catch (e) {
-        console.error('[note-publisher] cover upload failed:', (e as Error).message);
+        console.error('  [publisher] cover image FAILED:', (e as Error).message);
+        await page.screenshot({ path: `drafts/cover-fail-${Date.now()}.png`, fullPage: false });
       }
     }
 
-    // Walk blocks. Each figure block is rendered to PNG, then uploaded.
-    let requestedFigures = 0;
-    let renderedFigures = 0;
-
-    for (let i = 0; i < input.blocks.length; i++) {
-      const block = input.blocks[i];
-      if (block.type === 'markdown') {
-        await pastePlainText(page, block.content.trim() + '\n\n');
-      } else if (block.type === 'figure_image') {
-        requestedFigures += 1;
-        try {
-          console.log(`  [block ${i}] generating figure_image…`);
-          const png = await generateFigureImage(block.prompt);
-          await insertEditorImage(page, png);
-          renderedFigures += 1;
-          // bring cursor back into body
-          await bodyLocator.click();
-          await page.keyboard.press('End');
-          await page.keyboard.press('Enter');
-          if (block.caption) {
-            await pastePlainText(page, `（図: ${block.caption}）\n\n`);
-          }
-        } catch (e) {
-          console.error(`  [block ${i}] figure_image failed:`, (e as Error).message);
-          if (block.caption) {
-            await pastePlainText(page, `*[図: ${block.caption} — 生成失敗]*\n\n`);
-          }
-        }
-      } else if (block.type === 'figure_table') {
-        requestedFigures += 1;
-        try {
-          console.log(`  [block ${i}] rendering figure_table…`);
-          const png = await renderFigureHtmlToPng(block.html);
-          await insertEditorImage(page, png);
-          renderedFigures += 1;
-          await bodyLocator.click();
-          await page.keyboard.press('End');
-          await page.keyboard.press('Enter');
-          if (block.caption) {
-            await pastePlainText(page, `（表: ${block.caption}）\n\n`);
-          }
-        } catch (e) {
-          console.error(`  [block ${i}] figure_table failed:`, (e as Error).message);
-          if (block.caption) {
-            await pastePlainText(page, `*[表: ${block.caption} — 生成失敗]*\n\n`);
-          }
-        }
-      }
-    }
-
-    // Hashtags at the very end
-    if (input.hashtags.length > 0) {
-      await pastePlainText(page, '\n' + input.hashtags.join(' '));
-    }
+    // Body + hashtags as a single paste.
+    await pastePlainText(page, input.body + '\n\n' + input.hashtags.join(' '));
 
     await page.waitForTimeout(1500);
     await page.getByRole('button', { name: '下書き保存' }).click();
@@ -126,75 +73,47 @@ export async function publishToNoteDraft(input: PublishInput): Promise<PublishRe
       await page.waitForURL(/\/(notes|n)\/[A-Za-z0-9_-]+/, { timeout: 15_000 });
       draftUrl = page.url();
     } catch {
-      // fall back
+      // stay on current URL
     }
 
     const screenshotPath = 'drafts/last-publish.png';
     await page.screenshot({ path: screenshotPath, fullPage: true });
-
-    return {
-      draftUrl,
-      screenshotPath,
-      figureStats: { requested: requestedFigures, rendered: renderedFigures },
-    };
+    return { draftUrl, screenshotPath };
   } finally {
     await browser.close();
   }
 }
 
-async function insertEditorImage(page: Page, png: Buffer) {
-  // Ensure focus is on an empty paragraph at the end of the body.
-  // When the cursor sits on an empty paragraph, note shows a "+" block
-  // inserter button (aria-label="メニューを開く") next to that paragraph.
-  const body = page.locator('[contenteditable="true"][role="textbox"]').first();
-  await body.click();
-  await page.keyboard.press('End');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(400);
+// Cover image upload — uses the toolbar "画像を追加" button (aria-label).
+// This path goes through the "画像のサイズの変更" crop dialog and produces
+// the article thumbnail, which is exactly the flow we want for the cover.
+async function insertCoverImage(page: Page, png: Buffer) {
+  await page.getByRole('button', { name: '画像を追加' }).click();
 
-  // 1. Click the "+" block inserter
-  const plusBtn = page.locator('button[aria-label="メニューを開く"]').first();
-  await plusBtn.waitFor({ state: 'visible', timeout: 10_000 });
-  await plusBtn.click();
+  const uploadMenuItem = page.locator('button').filter({ hasText: /画像をアップロード/ }).first();
+  await uploadMenuItem.waitFor({ timeout: 10_000 });
 
-  // 2. The expanded menu contains a "画像" row. The same upload flow
-  //    (file chooser → crop dialog → 保存) runs from there.
-  const imageMenuRow = page.locator('button', { hasText: /^画像$/ }).first();
-  await imageMenuRow.waitFor({ state: 'visible', timeout: 10_000 });
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 10_000 }),
+    uploadMenuItem.click(),
+  ]);
+  await chooser.setFiles({ name: 'cover.png', mimeType: 'image/png', buffer: png });
 
-  // Some renderings of the menu open a submenu with "画像をアップロード";
-  // others open the file chooser directly. Handle both.
-  let chooserPromise = page.waitForEvent('filechooser', { timeout: 10_000 });
-  await imageMenuRow.click();
-  let chooser;
-  try {
-    chooser = await chooserPromise;
-  } catch {
-    // Submenu path: look for "画像をアップロード"
-    const uploadMenuItem = page.locator('button').filter({ hasText: /画像をアップロード/ }).first();
-    await uploadMenuItem.waitFor({ state: 'visible', timeout: 10_000 });
-    chooserPromise = page.waitForEvent('filechooser', { timeout: 10_000 });
-    await uploadMenuItem.click();
-    chooser = await chooserPromise;
-  }
-  await chooser.setFiles({ name: 'figure.png', mimeType: 'image/png', buffer: png });
-
-  // 3. Cover images trigger a "画像のサイズの変更" crop dialog; inline
-  //    body images don't. Handle it if it appears, wait briefly otherwise.
   const cropDialog = page.locator('[role="dialog"]').filter({ hasText: /画像のサイズの変更/ });
-  const dialogPresent = await cropDialog
-    .waitFor({ state: 'visible', timeout: 6_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (dialogPresent) {
-    await cropDialog.getByRole('button', { name: '保存' }).click();
-    await cropDialog.waitFor({ state: 'hidden', timeout: 30_000 });
-  } else {
-    // No crop dialog — wait for the upload to finish (image appears somewhere
-    // on the page) before moving on.
-    await page.waitForTimeout(2500);
-  }
-  await page.waitForTimeout(600);
+  await cropDialog.waitFor({ timeout: 20_000 });
+  await cropDialog.getByRole('button', { name: '保存' }).click();
+  await cropDialog.waitFor({ state: 'hidden', timeout: 30_000 });
+
+  // The crop dialog closes instantly but the actual upload to note's CDN
+  // takes several more seconds. If we save the draft before then, the
+  // placeholder never resolves and the saved post has no image. Wait for
+  // an <img> with note's asset host to be present.
+  await page.waitForFunction(
+    () => !!document.querySelector('img[src*="st-note.com"], img[src*="assets.st-note"]'),
+    null,
+    { timeout: 60_000 },
+  );
+  await page.waitForTimeout(800);
   await page.keyboard.press('Escape');
 }
 
@@ -207,5 +126,4 @@ async function pastePlainText(page: Page, text: string) {
     target?.focus();
     target?.dispatchEvent(ev);
   }, text);
-  await page.waitForTimeout(150);
 }
