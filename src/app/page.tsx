@@ -45,7 +45,7 @@ export default async function Home({
   let query = supabase
     .from('news_articles')
     .select('*')
-    .order('published_at', { ascending: false, nullsFirst: false })
+    .order('scraped_at', { ascending: false, nullsFirst: false })
     .limit(30);
 
   if (filters.tag) query = query.contains('tags', [filters.tag]);
