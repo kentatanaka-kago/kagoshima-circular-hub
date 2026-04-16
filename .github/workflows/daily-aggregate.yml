@@ -1,0 +1,25 @@
+name: Daily aggregate
+
+on:
+  schedule:
+    # 20:00 UTC = 05:00 JST
+    - cron: '0 20 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger /api/cron/aggregate
+        run: |
+          status=$(curl -s -o /tmp/body.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/aggregate")
+          cat /tmp/body.json
+          echo ""
+          echo "HTTP status: $status"
+          if [ "$status" != "200" ]; then
+            echo "::error::Aggregate endpoint returned $status"
+            exit 1
+          fi
