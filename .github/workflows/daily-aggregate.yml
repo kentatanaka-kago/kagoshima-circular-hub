@@ -2,8 +2,10 @@ name: Daily aggregate
 
 on:
   schedule:
-    # 20:00 UTC = 05:00 JST
-    - cron: '0 20 * * *'
+    - cron: '0 20 * * *'   # 05:00 JST
+    - cron: '0 3 * * *'    # 12:00 JST
+    - cron: '0 6 * * *'    # 15:00 JST
+    - cron: '0 9 * * *'    # 18:00 JST
   workflow_dispatch: {}
 
 jobs:
