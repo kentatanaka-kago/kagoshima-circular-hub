@@ -20,15 +20,25 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const { data } = await supabase
-    .from("news_articles")
-    .select("scraped_at")
-    .order("scraped_at", { ascending: false })
-    .limit(1)
-    .single<{ scraped_at: string }>();
+  const { data: metaRow } = await supabase
+    .from("system_meta")
+    .select("updated_at")
+    .eq("key", "last_aggregate_at")
+    .maybeSingle<{ updated_at: string }>();
 
-  const lastScraped = data?.scraped_at
-    ? new Date(data.scraped_at).toLocaleString("ja-JP", {
+  let lastAt: string | null = metaRow?.updated_at ?? null;
+  if (!lastAt) {
+    const { data: articleRow } = await supabase
+      .from("news_articles")
+      .select("scraped_at")
+      .order("scraped_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ scraped_at: string }>();
+    lastAt = articleRow?.scraped_at ?? null;
+  }
+
+  const lastScraped = lastAt
+    ? new Date(lastAt).toLocaleString("ja-JP", {
         timeZone: "Asia/Tokyo",
         month: "numeric",
         day: "numeric",

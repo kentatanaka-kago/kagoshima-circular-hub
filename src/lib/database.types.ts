@@ -32,6 +32,12 @@ export interface NewsArticle {
   blog_body: string | null;
 }
 
+export interface SystemMeta {
+  key: string;
+  value: string | null;
+  updated_at: string;
+}
+
 export interface Subsidy {
   id: string;
   name: string;
@@ -53,6 +59,7 @@ export interface Database {
       municipalities: { Row: Municipality; Insert: Partial<Municipality> & Pick<Municipality, 'id' | 'name'>; Update: Partial<Municipality> };
       news_articles: { Row: NewsArticle; Insert: Partial<NewsArticle> & Pick<NewsArticle, 'source_type' | 'source_name' | 'source_url' | 'title'>; Update: Partial<NewsArticle> };
       subsidies: { Row: Subsidy; Insert: Partial<Subsidy> & Pick<Subsidy, 'name' | 'issuer' | 'issuer_level' | 'source_url'>; Update: Partial<Subsidy> };
+      system_meta: { Row: SystemMeta; Insert: Partial<SystemMeta> & Pick<SystemMeta, 'key'>; Update: Partial<SystemMeta> };
     };
   };
 }

@@ -93,8 +93,16 @@ export async function GET(req: Request) {
     console.error('[cron] checkNotePublished failed:', (e as Error).message);
   }
 
+  const { error: metaError } = await admin
+    .from('system_meta')
+    .upsert(
+      [{ key: 'last_aggregate_at', value: null, updated_at: new Date().toISOString() }] as never[],
+      { onConflict: 'key' },
+    );
+  if (metaError) console.error('[cron] system_meta upsert failed:', metaError.message);
+
+  revalidatePath('/');
   if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0 || notePublished.updated > 0) {
-    revalidatePath('/');
     revalidatePath('/calendar');
   }
 
