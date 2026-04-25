@@ -6,6 +6,7 @@ export interface MailResult {
   pending: number;
   sent: number;
   failed: number;
+  recipients: number;
   skipped?: string;
   sampleErrors?: string[];
 }
@@ -28,12 +29,25 @@ type Row = {
   raw_excerpt: string | null;
 };
 
+async function loadRecipients(admin: Admin): Promise<string[]> {
+  const { data, error } = await admin
+    .from('mail_recipients')
+    .select('email, enabled')
+    .eq('enabled', true);
+  if (error || !data) return [];
+  return data.map((r) => r.email).filter(Boolean);
+}
+
 export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
   const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.MAIL_TO;
   const from = process.env.MAIL_FROM;
-  if (!apiKey || !to || !from) {
-    return { pending: 0, sent: 0, failed: 0, skipped: 'RESEND_API_KEY / MAIL_TO / MAIL_FROM not set' };
+  if (!apiKey || !from) {
+    return { pending: 0, sent: 0, failed: 0, recipients: 0, skipped: 'RESEND_API_KEY / MAIL_FROM not set' };
+  }
+
+  const recipients = await loadRecipients(admin);
+  if (recipients.length === 0) {
+    return { pending: 0, sent: 0, failed: 0, recipients: 0, skipped: 'no enabled recipients in mail_recipients' };
   }
 
   const { data, error } = await admin
@@ -43,8 +57,8 @@ export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
     .order('scraped_at', { ascending: true })
     .limit(MAIL_BATCH);
 
-  if (error) return { pending: 0, sent: 0, failed: 0, skipped: error.message };
-  if (!data || data.length === 0) return { pending: 0, sent: 0, failed: 0 };
+  if (error) return { pending: 0, sent: 0, failed: 0, recipients: recipients.length, skipped: error.message };
+  if (!data || data.length === 0) return { pending: 0, sent: 0, failed: 0, recipients: recipients.length };
 
   const rows = data as Row[];
   let sent = 0;
@@ -74,7 +88,9 @@ export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
         },
         body: JSON.stringify({
           from,
-          to,
+          // BCC keeps recipient addresses private from each other.
+          to: from,
+          bcc: recipients,
           subject: `[鹿児島CE] ${row.source_name}｜${row.title}`,
           text: JSON.stringify(payload, null, 2),
         }),
@@ -100,6 +116,7 @@ export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
     pending: rows.length,
     sent,
     failed,
+    recipients: recipients.length,
     ...(errors.length ? { sampleErrors: errors } : {}),
   };
 }

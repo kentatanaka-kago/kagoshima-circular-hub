@@ -34,6 +34,7 @@ async function main() {
     .from('news_articles')
     .select('*')
     .is('note_draft_url', null)
+    .is('blog_body', null)
     .not('ai_summary', 'is', null)
     .not('raw_excerpt', 'is', null)
     .order('published_at', { ascending: false, nullsFirst: false })

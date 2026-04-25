@@ -36,7 +36,7 @@ export async function upsertAndBackfill(articles: ScrapedArticle[]): Promise<Ing
   const bodies = await backfillBodies(admin);
   const summarized = await backfillSummaries(admin);
 
-  let mailed: MailResult = { pending: 0, sent: 0, failed: 0 };
+  let mailed: MailResult = { pending: 0, sent: 0, failed: 0, recipients: 0 };
   try {
     mailed = await emailUnsentArticles(admin);
   } catch (e) {

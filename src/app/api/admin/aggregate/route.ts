@@ -4,13 +4,7 @@ import { runAggregation } from '@/lib/aggregate';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-export async function GET(req: Request) {
-  const auth = req.headers.get('authorization');
-  const expected = process.env.CRON_SECRET;
-  if (expected && auth !== `Bearer ${expected}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export async function POST() {
   const result = await runAggregation();
   const status = result.ok ? 200 : 500;
   return NextResponse.json(result, { status });

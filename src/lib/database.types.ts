@@ -39,6 +39,14 @@ export interface SystemMeta {
   updated_at: string;
 }
 
+export interface MailRecipient {
+  id: string;
+  email: string;
+  enabled: boolean;
+  note: string | null;
+  created_at: string;
+}
+
 export interface Subsidy {
   id: string;
   name: string;
@@ -61,6 +69,7 @@ export interface Database {
       news_articles: { Row: NewsArticle; Insert: Partial<NewsArticle> & Pick<NewsArticle, 'source_type' | 'source_name' | 'source_url' | 'title'>; Update: Partial<NewsArticle> };
       subsidies: { Row: Subsidy; Insert: Partial<Subsidy> & Pick<Subsidy, 'name' | 'issuer' | 'issuer_level' | 'source_url'>; Update: Partial<Subsidy> };
       system_meta: { Row: SystemMeta; Insert: Partial<SystemMeta> & Pick<SystemMeta, 'key'>; Update: Partial<SystemMeta> };
+      mail_recipients: { Row: MailRecipient; Insert: Partial<MailRecipient> & Pick<MailRecipient, 'email'>; Update: Partial<MailRecipient> };
     };
   };
 }
