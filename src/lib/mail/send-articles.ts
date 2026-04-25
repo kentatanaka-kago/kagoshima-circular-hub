@@ -35,7 +35,8 @@ async function loadRecipients(admin: Admin): Promise<string[]> {
     .select('email, enabled')
     .eq('enabled', true);
   if (error || !data) return [];
-  return data.map((r) => r.email).filter(Boolean);
+  type RecipRow = { email: string; enabled: boolean };
+  return (data as RecipRow[]).map((r) => r.email).filter(Boolean);
 }
 
 export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
