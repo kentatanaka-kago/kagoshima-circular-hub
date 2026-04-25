@@ -1,0 +1,105 @@
+import type { supabaseAdmin } from '@/lib/supabase';
+
+type Admin = ReturnType<typeof supabaseAdmin>;
+
+export interface MailResult {
+  pending: number;
+  sent: number;
+  failed: number;
+  skipped?: string;
+  sampleErrors?: string[];
+}
+
+const MAIL_BATCH = 30;
+const SEND_INTERVAL_MS = 600;
+const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+
+type Row = {
+  id: string;
+  source_type: string;
+  source_id: string | null;
+  source_name: string;
+  source_url: string;
+  title: string;
+  published_at: string | null;
+  scraped_at: string;
+  tags: string[];
+  ai_summary: string | null;
+  raw_excerpt: string | null;
+};
+
+export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.MAIL_TO;
+  const from = process.env.MAIL_FROM;
+  if (!apiKey || !to || !from) {
+    return { pending: 0, sent: 0, failed: 0, skipped: 'RESEND_API_KEY / MAIL_TO / MAIL_FROM not set' };
+  }
+
+  const { data, error } = await admin
+    .from('news_articles')
+    .select('id, source_type, source_id, source_name, source_url, title, published_at, scraped_at, tags, ai_summary, raw_excerpt')
+    .is('emailed_at', null)
+    .order('scraped_at', { ascending: true })
+    .limit(MAIL_BATCH);
+
+  if (error) return { pending: 0, sent: 0, failed: 0, skipped: error.message };
+  if (!data || data.length === 0) return { pending: 0, sent: 0, failed: 0 };
+
+  const rows = data as Row[];
+  let sent = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const row of rows) {
+    try {
+      const payload = {
+        id: row.id,
+        title: row.title,
+        source_type: row.source_type,
+        source_id: row.source_id,
+        source_name: row.source_name,
+        source_url: row.source_url,
+        published_at: row.published_at,
+        scraped_at: row.scraped_at,
+        tags: row.tags,
+        ai_summary: row.ai_summary,
+        raw_excerpt: row.raw_excerpt,
+      };
+      const res = await fetch(RESEND_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from,
+          to,
+          subject: `[鹿児島CE] ${row.source_name}｜${row.title}`,
+          text: JSON.stringify(payload, null, 2),
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`resend ${res.status}: ${await res.text()}`);
+      }
+      const { error: updErr } = await admin
+        .from('news_articles')
+        .update({ emailed_at: new Date().toISOString() } as never)
+        .eq('id', row.id);
+      if (updErr) throw new Error(`update failed: ${updErr.message}`);
+      sent += 1;
+    } catch (e) {
+      failed += 1;
+      if (errors.length < 3) errors.push(e instanceof Error ? e.message : String(e));
+    }
+    // Stay under Resend's 2 req/sec default rate limit.
+    await new Promise((r) => setTimeout(r, SEND_INTERVAL_MS));
+  }
+
+  return {
+    pending: rows.length,
+    sent,
+    failed,
+    ...(errors.length ? { sampleErrors: errors } : {}),
+  };
+}

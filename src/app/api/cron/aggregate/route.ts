@@ -15,6 +15,7 @@ import { fetchArticlePage } from '@/lib/scrapers/body';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
 import { summarizeArticle } from '@/lib/ai/summarize';
 import { checkNotePublished } from '@/lib/note/check-published';
+import { emailUnsentArticles } from '@/lib/mail/send-articles';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -93,6 +94,13 @@ export async function GET(req: Request) {
     console.error('[cron] checkNotePublished failed:', (e as Error).message);
   }
 
+  let mailed: Awaited<ReturnType<typeof emailUnsentArticles>> = { pending: 0, sent: 0, failed: 0 };
+  try {
+    mailed = await emailUnsentArticles(admin);
+  } catch (e) {
+    console.error('[cron] emailUnsentArticles failed:', (e as Error).message);
+  }
+
   const { error: metaError } = await admin
     .from('system_meta')
     .upsert(
@@ -114,6 +122,7 @@ export async function GET(req: Request) {
     bodies,
     summarized,
     notePublished,
+    mailed,
   });
 }
 

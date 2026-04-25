@@ -3,6 +3,7 @@ import type { ScrapedArticle } from './scrapers/types';
 import { fetchArticlePage } from './scrapers/body';
 import { summarizeArticle } from './ai/summarize';
 import { supabaseAdmin } from './supabase';
+import { emailUnsentArticles, type MailResult } from './mail/send-articles';
 
 type Admin = ReturnType<typeof supabaseAdmin>;
 
@@ -11,6 +12,7 @@ export interface IngestResult {
   inserted: number;
   bodies: { pending: number; ok: number; failed: number };
   summarized: { pending: number; ok: number; failed: number; sampleErrors?: string[] };
+  mailed: MailResult;
 }
 
 const BODY_BATCH = 40;
@@ -34,12 +36,19 @@ export async function upsertAndBackfill(articles: ScrapedArticle[]): Promise<Ing
   const bodies = await backfillBodies(admin);
   const summarized = await backfillSummaries(admin);
 
+  let mailed: MailResult = { pending: 0, sent: 0, failed: 0 };
+  try {
+    mailed = await emailUnsentArticles(admin);
+  } catch (e) {
+    console.error('[ingest] emailUnsentArticles failed:', (e as Error).message);
+  }
+
   if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0) {
     revalidatePath('/');
     revalidatePath('/calendar');
   }
 
-  return { candidates: articles.length, inserted, bodies, summarized };
+  return { candidates: articles.length, inserted, bodies, summarized, mailed };
 }
 
 export async function backfillBodies(admin: Admin) {

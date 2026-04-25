@@ -25,6 +25,7 @@ export interface NewsArticle {
   relevance_score: number | null;
   scraped_at: string;
   created_at: string;
+  emailed_at: string | null;
   note_draft_url: string | null;
   note_post_url: string | null;
   note_posted_at: string | null;
