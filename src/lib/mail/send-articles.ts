@@ -121,3 +121,78 @@ export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
     ...(errors.length ? { sampleErrors: errors } : {}),
   };
 }
+
+export interface SingleMailResult {
+  ok: boolean;
+  sent: boolean;
+  recipients: number;
+  error?: string;
+}
+
+export async function emailSingleArticle(admin: Admin, articleId: string): Promise<SingleMailResult> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.MAIL_FROM;
+  if (!apiKey || !from) {
+    return { ok: false, sent: false, recipients: 0, error: 'RESEND_API_KEY / MAIL_FROM not set' };
+  }
+
+  const recipients = await loadRecipients(admin);
+  if (recipients.length === 0) {
+    return { ok: false, sent: false, recipients: 0, error: 'no enabled recipients' };
+  }
+
+  const { data, error } = await admin
+    .from('news_articles')
+    .select('id, source_type, source_id, source_name, source_url, title, published_at, scraped_at, tags, ai_summary, raw_excerpt')
+    .eq('id', articleId)
+    .maybeSingle();
+  if (error) return { ok: false, sent: false, recipients: recipients.length, error: error.message };
+  if (!data) return { ok: false, sent: false, recipients: recipients.length, error: 'article not found' };
+
+  const row = data as Row;
+  const payload = {
+    id: row.id,
+    title: row.title,
+    source_type: row.source_type,
+    source_id: row.source_id,
+    source_name: row.source_name,
+    source_url: row.source_url,
+    published_at: row.published_at,
+    scraped_at: row.scraped_at,
+    tags: row.tags,
+    ai_summary: row.ai_summary,
+    raw_excerpt: row.raw_excerpt,
+  };
+
+  const res = await fetch(RESEND_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from,
+      to: from,
+      bcc: recipients,
+      subject: `[鹿児島CE] ${row.source_name}｜${row.title}`,
+      text: JSON.stringify(payload, null, 2),
+    }),
+  });
+  if (!res.ok) {
+    return {
+      ok: false,
+      sent: false,
+      recipients: recipients.length,
+      error: `resend ${res.status}: ${await res.text()}`,
+    };
+  }
+
+  const { error: updErr } = await admin
+    .from('news_articles')
+    .update({ emailed_at: new Date().toISOString() } as never)
+    .eq('id', row.id);
+  if (updErr) {
+    return { ok: false, sent: true, recipients: recipients.length, error: `update failed: ${updErr.message}` };
+  }
+  return { ok: true, sent: true, recipients: recipients.length };
+}
