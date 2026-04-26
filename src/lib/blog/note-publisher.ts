@@ -1,10 +1,12 @@
 // Posts a generated blog post to note.com as a DRAFT.
 // Body images are intentionally not inserted — cover only.
 import fs from 'node:fs';
+import { marked } from 'marked';
 import { chromium, type Page } from 'playwright';
 
 const STATE_PATH = 'auth/note-state.json';
 const EDITOR_URL = 'https://editor.note.com/new';
+const PASTE_KEY = process.platform === 'darwin' ? 'Meta+V' : 'Control+V';
 
 export interface PublishInput {
   title: string;
@@ -32,6 +34,12 @@ export async function publishToNoteDraft(input: PublishInput): Promise<PublishRe
       viewport: { width: 1280, height: 800 },
       userAgent:
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    });
+    // Required for navigator.clipboard.write inside page.evaluate. Without this,
+    // a real Cmd+V paste lands no useful clipboardData on note's ProseMirror
+    // editor, which silently drops the body when 下書き保存 serialises state.
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+      origin: 'https://editor.note.com',
     });
     const page = await context.newPage();
     await page.goto(EDITOR_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
@@ -62,8 +70,8 @@ export async function publishToNoteDraft(input: PublishInput): Promise<PublishRe
       }
     }
 
-    // Body + hashtags as a single paste.
-    await pastePlainText(page, input.body + '\n\n' + input.hashtags.join(' '));
+    // Body + hashtags as a single rich paste (HTML + plain).
+    await pasteRichContent(page, input.body, input.hashtags);
 
     await page.waitForTimeout(1500);
     await page.getByRole('button', { name: '下書き保存' }).click();
@@ -78,6 +86,12 @@ export async function publishToNoteDraft(input: PublishInput): Promise<PublishRe
 
     const screenshotPath = 'drafts/last-publish.png';
     await page.screenshot({ path: screenshotPath, fullPage: true });
+
+    // Reopen the draft and confirm the body actually persisted. Catches the
+    // failure mode where ProseMirror state never received the paste even
+    // though it rendered in the DOM.
+    await verifyDraftBody(page, draftUrl);
+
     return { draftUrl, screenshotPath };
   } finally {
     await browser.close();
@@ -117,13 +131,49 @@ async function insertCoverImage(page: Page, png: Buffer) {
   await page.keyboard.press('Escape');
 }
 
-async function pastePlainText(page: Page, text: string) {
-  await page.evaluate(async (t) => {
-    const dt = new DataTransfer();
-    dt.setData('text/plain', t);
-    const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
-    const target = document.querySelector('[contenteditable="true"][role="textbox"]') as HTMLElement | null;
-    target?.focus();
-    target?.dispatchEvent(ev);
-  }, text);
+// Renders markdown to a minimal HTML subset (h2, p, ul/li, strong, em),
+// writes both text/html and text/plain to the system clipboard, then fires
+// a real Cmd+V at the editor. Trusted paste with text/html lets note's
+// ProseMirror transformPasted produce real headings/lists/bold instead of
+// literal `##` characters.
+async function pasteRichContent(page: Page, markdownBody: string, hashtags: string[]) {
+  const fullMarkdown =
+    markdownBody + (hashtags.length ? '\n\n' + hashtags.join(' ') : '');
+  const html = await marked.parse(fullMarkdown, { gfm: true, breaks: false });
+
+  await page.evaluate(
+    async ({ html, plain }) => {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      });
+      await navigator.clipboard.write([item]);
+    },
+    { html, plain: fullMarkdown },
+  );
+
+  // Caller positioned the cursor at the end of the editor (after cover),
+  // so don't re-click — just fire the OS-level paste shortcut.
+  await page.keyboard.press(PASTE_KEY);
+  await page.waitForTimeout(1500);
+}
+
+async function verifyDraftBody(page: Page, draftUrl: string) {
+  if (!/\/(notes|n)\/[A-Za-z0-9_-]+/.test(draftUrl)) {
+    throw new Error(`note draft URL did not settle: ${draftUrl}`);
+  }
+  console.log('  [publisher] verifying saved body…');
+  await page.goto(draftUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  const editor = page.locator('[contenteditable="true"][role="textbox"]').first();
+  await editor.waitFor({ timeout: 30_000 });
+  // Allow ProseMirror to hydrate from the saved doc.
+  await page.waitForTimeout(2500);
+  const text = (await editor.innerText()).replace(/\s+/g, '');
+  if (text.length < 100) {
+    await page.screenshot({ path: 'drafts/verify-fail.png', fullPage: true });
+    throw new Error(
+      `note draft body verification failed: only ${text.length} non-whitespace chars on reload (draft: ${draftUrl})`,
+    );
+  }
+  console.log(`  [publisher] verified ${text.length} chars in saved draft`);
 }
