@@ -23,6 +23,7 @@ function loadDotenv(file = '.env.local') {
 loadDotenv();
 
 const DRY_RUN = process.argv.includes('--dry-run') || process.env.BLOG_DRY_RUN === '1';
+const NO_COVER = process.argv.includes('--no-cover') || process.env.BLOG_NO_COVER === '1';
 
 async function main() {
   const supabase = createClient<Database>(
@@ -55,20 +56,26 @@ async function main() {
   console.log(`  ✓ body: ${post.body.length} chars`);
   console.log(`  ✓ hashtags: ${post.hashtags.join(' ')}`);
 
-  console.log('\n2/3 Generating cover image (Nano Banana)…');
-  const { pngBuffer, model: coverModel } = await generateCoverImage({
-    title: post.title,
-    tags: article.tags,
-    summary: article.ai_summary,
-  });
-  console.log(`  ✓ ${pngBuffer.length.toLocaleString()} bytes, model ${coverModel}`);
+  let pngBuffer: Buffer | undefined;
+  if (NO_COVER) {
+    console.log('\n2/3 Cover image SKIPPED (--no-cover / BLOG_NO_COVER=1)');
+  } else {
+    console.log('\n2/3 Generating cover image (Nano Banana)…');
+    const cover = await generateCoverImage({
+      title: post.title,
+      tags: article.tags,
+      summary: article.ai_summary,
+    });
+    pngBuffer = cover.pngBuffer;
+    console.log(`  ✓ ${pngBuffer.length.toLocaleString()} bytes, model ${cover.model}`);
+  }
 
   // Save locally
   const stamp = new Date().toISOString().slice(0, 10);
   const dir = path.join('drafts', `${stamp}_${article.id.slice(0, 8)}`);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'post.md'), `# ${post.title}\n\n${post.body}\n\n${post.hashtags.join(' ')}\n`);
-  fs.writeFileSync(path.join(dir, 'cover.png'), pngBuffer);
+  if (pngBuffer) fs.writeFileSync(path.join(dir, 'cover.png'), pngBuffer);
   fs.writeFileSync(
     path.join(dir, 'meta.json'),
     JSON.stringify({ article_id: article.id, source_url: article.source_url, post }, null, 2),
@@ -87,7 +94,7 @@ async function main() {
       title: post.title,
       body: post.body,
       hashtags: post.hashtags,
-      coverPng: pngBuffer,
+      ...(pngBuffer ? { coverPng: pngBuffer } : {}),
     });
     draftUrl = result.draftUrl;
     console.log(`  ✓ draft URL: ${draftUrl}`);
