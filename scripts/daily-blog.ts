@@ -23,7 +23,9 @@ function loadDotenv(file = '.env.local') {
 loadDotenv();
 
 const DRY_RUN = process.argv.includes('--dry-run') || process.env.BLOG_DRY_RUN === '1';
-const NO_COVER = process.argv.includes('--no-cover') || process.env.BLOG_NO_COVER === '1';
+// Cover image generation (Gemini 2.5 Flash Image / Nano Banana) is metered,
+// so it's opt-in. Pass --cover or BLOG_COVER=1 to generate one.
+const COVER = process.argv.includes('--cover') || process.env.BLOG_COVER === '1';
 
 async function main() {
   const supabase = createClient<Database>(
@@ -57,9 +59,7 @@ async function main() {
   console.log(`  ✓ hashtags: ${post.hashtags.join(' ')}`);
 
   let pngBuffer: Buffer | undefined;
-  if (NO_COVER) {
-    console.log('\n2/3 Cover image SKIPPED (--no-cover / BLOG_NO_COVER=1)');
-  } else {
+  if (COVER) {
     console.log('\n2/3 Generating cover image (Nano Banana)…');
     const cover = await generateCoverImage({
       title: post.title,
@@ -68,6 +68,8 @@ async function main() {
     });
     pngBuffer = cover.pngBuffer;
     console.log(`  ✓ ${pngBuffer.length.toLocaleString()} bytes, model ${cover.model}`);
+  } else {
+    console.log('\n2/3 Cover image skipped (default; pass --cover or BLOG_COVER=1 to enable)');
   }
 
   // Save locally
