@@ -1,9 +1,7 @@
-// Daily blog pipeline: pick the freshest high-relevance article, generate
-// a Claude-written explainer + a Nano-Banana cover, save a local Markdown
-// draft, push a DRAFT to note.com, record the URL back to Supabase.
+// Ad-hoc: generate a Note draft for a specific news_articles.id, and append
+// the kagoshima-circular-hub article URL at the end of the body.
 //
-// Run manually:      npx tsx scripts/daily-blog.ts
-// Run with launchd:  see Library/LaunchAgents/com.kagoshima-circular-hub.blog.plist
+// Usage: npx tsx scripts/_blog-by-id.ts <article-id> [--cover] [--dry-run]
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
@@ -22,11 +20,16 @@ function loadDotenv(file = '.env.local') {
 
 loadDotenv();
 
-const DRY_RUN = process.argv.includes('--dry-run') || process.env.BLOG_DRY_RUN === '1';
-// Cover image generation (Gemini 2.5 Flash Image / Nano Banana) is metered,
-// so it's opt-in. Pass --cover or BLOG_COVER=1 to generate one.
-const COVER = process.argv.includes('--cover') || process.env.BLOG_COVER === '1';
 const HUB_BASE = 'https://kagoshima-circular-hub.vercel.app';
+const args = process.argv.slice(2);
+const id = args.find((a) => !a.startsWith('--'));
+const DRY_RUN = args.includes('--dry-run') || process.env.BLOG_DRY_RUN === '1';
+const COVER = args.includes('--cover') || process.env.BLOG_COVER === '1';
+
+if (!id) {
+  console.error('Usage: npx tsx scripts/_blog-by-id.ts <article-id> [--cover] [--dry-run]');
+  process.exit(1);
+}
 
 async function main() {
   const supabase = createClient<Database>(
@@ -37,23 +40,19 @@ async function main() {
   const { data, error } = await supabase
     .from('news_articles')
     .select('*')
-    .is('note_draft_url', null)
-    .is('blog_body', null)
-    .not('ai_summary', 'is', null)
-    .not('raw_excerpt', 'is', null)
-    .order('published_at', { ascending: false, nullsFirst: false })
-    .limit(20);
+    .eq('id', id!)
+    .maybeSingle();
   if (error) throw error;
-  if (!data || data.length === 0) {
-    console.log('No unblogged articles found. Nothing to do.');
-    return;
-  }
-
-  const article = pickBest(data as NewsArticle[]);
+  if (!data) throw new Error(`Article not found: ${id}`);
+  const article = data as NewsArticle;
   console.log(`Selected article: ${article.title.slice(0, 80)}`);
   console.log(`Source: ${article.source_name} | ${article.source_url}`);
+  if (article.note_draft_url) {
+    console.warn(`  ⚠ already has note_draft_url: ${article.note_draft_url}`);
+    console.warn('  proceeding to create a new draft anyway.');
+  }
 
-  console.log('\n1/3 Generating blog post (Claude Sonnet 4.5)…');
+  console.log('\n1/3 Generating blog post (Claude)…');
   const post = await generateBlogPost(article);
   console.log(`  ✓ title: ${post.title.slice(0, 80)}`);
   console.log(`  ✓ body: ${post.body.length} chars`);
@@ -76,7 +75,6 @@ async function main() {
     console.log('\n2/3 Cover image skipped (default; pass --cover or BLOG_COVER=1 to enable)');
   }
 
-  // Save locally
   const stamp = new Date().toISOString().slice(0, 10);
   const dir = path.join('drafts', `${stamp}_${article.id.slice(0, 8)}`);
   fs.mkdirSync(dir, { recursive: true });
@@ -132,19 +130,7 @@ async function main() {
   console.log(`   ${draftUrl}`);
 }
 
-function pickBest(articles: NewsArticle[]): NewsArticle {
-  const priorityTags = new Set(['補助金', 'サーキュラー', '脱炭素']);
-  return [...articles].sort((a, b) => {
-    const pa = a.tags.filter((t) => priorityTags.has(t)).length;
-    const pb = b.tags.filter((t) => priorityTags.has(t)).length;
-    if (pb !== pa) return pb - pa;
-    const da = a.published_at ? new Date(a.published_at).getTime() : 0;
-    const db = b.published_at ? new Date(b.published_at).getTime() : 0;
-    return db - da;
-  })[0];
-}
-
 main().catch((e) => {
-  console.error('[daily-blog] FATAL:', e);
+  console.error('[blog-by-id] FATAL:', e);
   process.exit(1);
 });
