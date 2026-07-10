@@ -134,9 +134,7 @@ export default async function CasesPage({
               {isRecentlyPublished(a.scraped_at) && (
                 <span className="shrink-0 rounded bg-rose-500 text-white text-[10px] font-semibold px-1.5 py-0.5 leading-none uppercase tracking-wide">NEW</span>
               )}
-              <a href={a.source_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                {a.title} <span className="text-zinc-400">↗</span>
-              </a>
+              <Link href={`/news/${a.id}`} className="hover:underline">{a.title}</Link>
             </h2>
             {a.ai_summary && (
               <Summary
@@ -144,16 +142,26 @@ export default async function CasesPage({
                 className="mt-2 text-sm text-zinc-700 dark:text-zinc-300 line-clamp-3"
               />
             )}
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {a.tags?.map((t) => (
-                <Link
-                  key={t}
-                  href={buildQuery(filters, { tag: t })}
-                  className="rounded-full bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-400"
-                >
-                  {t}
-                </Link>
-              ))}
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-1.5">
+                {a.tags?.map((t) => (
+                  <Link
+                    key={t}
+                    href={buildQuery(filters, { tag: t })}
+                    className="rounded-full bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-400"
+                  >
+                    {t}
+                  </Link>
+                ))}
+              </div>
+              <a
+                href={a.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:underline"
+              >
+                元記事を読む ↗
+              </a>
             </div>
           </li>
         ))}
