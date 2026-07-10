@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateBlogPost } from '@/lib/blog/generate';
-import type { NewsArticle } from '@/lib/database.types';
+import { ARTICLE_COLUMNS, type NewsArticle } from '@/lib/database.types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -19,13 +19,13 @@ export async function POST(req: Request) {
   const admin = supabaseAdmin();
   const { data, error } = await admin
     .from('news_articles')
-    .select('*')
+    .select(ARTICLE_COLUMNS)
     .eq('id', articleId)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: 'article not found' }, { status: 404 });
 
-  const article = data as NewsArticle;
+  const article = data as unknown as NewsArticle;
   if (!article.raw_excerpt || !article.ai_summary) {
     return NextResponse.json(
       { error: 'article missing raw_excerpt or ai_summary — wait for backfill' },

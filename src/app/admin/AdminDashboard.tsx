@@ -15,6 +15,7 @@ interface ArticleRow {
   note_draft_url: string | null;
   note_post_url: string | null;
   note_posted_at: string | null;
+  note_publish_requested_at: string | null;
   ai_summary: string | null;
   raw_excerpt: string | null;
   emailed_at: string | null;
@@ -54,6 +55,7 @@ function fmt(dt: string | null) {
 function articleStatus(a: ArticleRow): { label: string; cls: string } {
   if (a.note_post_url) return { label: 'note公開済', cls: 'text-emerald-600' };
   if (a.note_draft_url) return { label: 'note下書き', cls: 'text-sky-600' };
+  if (a.note_publish_requested_at) return { label: '下書き作成待ち', cls: 'text-violet-600' };
   if (a.blog_body) return { label: '生成済（未投稿）', cls: 'text-amber-600' };
   return { label: '未生成', cls: 'text-zinc-400' };
 }
@@ -79,6 +81,9 @@ export function AdminDashboard() {
 
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<string | null>(null);
+
+  const [queueingId, setQueueingId] = useState<string | null>(null);
+  const [queueResult, setQueueResult] = useState<string | null>(null);
 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
@@ -209,7 +214,7 @@ export function AdminDashboard() {
       });
       const json = await res.json();
       if (res.ok) {
-        setGenResult(`✓ 生成完了: ${json.title}（${json.bodyLength}字）— ローカルで publish-queued.ts を実行して投稿してください`);
+        setGenResult(`✓ 生成完了: ${json.title}（${json.bodyLength}字）— 「note下書き」ボタンで投稿を依頼できます`);
         await loadArticles();
       } else {
         setGenResult(`✗ ${json.error ?? 'エラー'}`);
@@ -245,6 +250,42 @@ export function AdminDashboard() {
       setSendResult(`✗ ${(e as Error).message}`);
     } finally {
       setSendingId(null);
+    }
+  }
+
+  async function requestNoteDraft(article: ArticleRow) {
+    const isCancel = !!article.note_publish_requested_at;
+    if (!isCancel) {
+      const ok = confirm(
+        `この記事のnote下書き作成を依頼します。\nMac miniの監視ジョブ（5分間隔）が自動で下書きを作成します。\n\n${article.blog_title ?? article.title}\n\nよろしいですか？`,
+      );
+      if (!ok) return;
+    }
+    setQueueingId(article.id);
+    setQueueResult(null);
+    try {
+      const res = isCancel
+        ? await fetch(`/api/admin/request-note-draft?id=${encodeURIComponent(article.id)}`, { method: 'DELETE' })
+        : await fetch('/api/admin/request-note-draft', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ articleId: article.id }),
+          });
+      const json = await res.json();
+      if (res.ok && json.ok) {
+        setQueueResult(
+          isCancel
+            ? `✓ 下書き作成依頼を取り消しました — ${article.title}`
+            : `✓ 下書き作成を依頼しました（数分以内に自動作成されます）— ${article.title}`,
+        );
+        await loadArticles();
+      } else {
+        setQueueResult(`✗ ${json.error ?? 'エラー'}`);
+      }
+    } catch (e) {
+      setQueueResult(`✗ ${(e as Error).message}`);
+    } finally {
+      setQueueingId(null);
     }
   }
 
@@ -434,6 +475,7 @@ export function AdminDashboard() {
 
         {sendResult && <p className="mb-3 text-sm font-mono text-zinc-700 dark:text-zinc-300">{sendResult}</p>}
         {genResult && <p className="mb-3 text-sm font-mono text-zinc-700 dark:text-zinc-300">{genResult}</p>}
+        {queueResult && <p className="mb-3 text-sm font-mono text-zinc-700 dark:text-zinc-300">{queueResult}</p>}
 
         {loading ? (
           <p className="text-sm text-zinc-500">読込中…</p>
@@ -472,6 +514,31 @@ export function AdminDashboard() {
                       title={canGenerate ? '生成（再生成可）' : '本文 or 要約 が未取得のため生成不可'}
                     >
                       {generatingId === a.id ? '生成中…' : a.blog_body ? '再生成' : '生成'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => requestNoteDraft(a)}
+                      disabled={!a.blog_body || !!a.note_draft_url || queueingId === a.id}
+                      className={`px-3 py-1 rounded text-xs font-medium border disabled:opacity-40 disabled:cursor-not-allowed ${
+                        a.note_publish_requested_at && !a.note_draft_url
+                          ? 'border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950'
+                          : 'border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800'
+                      }`}
+                      title={
+                        a.note_draft_url
+                          ? '既に下書き作成済み'
+                          : a.note_publish_requested_at
+                            ? 'クリックで依頼を取り消し'
+                            : a.blog_body
+                              ? 'Mac miniの監視ジョブがnote下書きを自動作成します'
+                              : '先に「生成」を実行してください'
+                      }
+                    >
+                      {queueingId === a.id
+                        ? '処理中…'
+                        : a.note_publish_requested_at && !a.note_draft_url
+                          ? '依頼取消'
+                          : 'note下書き'}
                     </button>
                     <button
                       type="button"

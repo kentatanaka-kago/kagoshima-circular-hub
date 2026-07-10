@@ -55,6 +55,8 @@ export async function emailUnsentArticles(admin: Admin): Promise<MailResult> {
     .from('news_articles')
     .select('id, source_type, source_id, source_name, source_url, title, published_at, scraped_at, tags, ai_summary, raw_excerpt')
     .is('emailed_at', null)
+    // 国内事例 (CE media articles) are for the /cases page only — no email.
+    .neq('source_type', 'domestic_case')
     .order('scraped_at', { ascending: true })
     .limit(MAIL_BATCH);
 

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kagoshima-circular-hub.note-queue</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>/Users/tanakakenta/kagoshima-circular-hub/scripts/run-note-queue.sh</string>
+  </array>
+
+  <!-- Poll the note draft queue every 5 minutes. The wrapper exits
+       immediately (no npx startup) when the queue is empty. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/tanakakenta/kagoshima-circular-hub/logs/note-queue.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tanakakenta/kagoshima-circular-hub/logs/note-queue.err.log</string>
+</dict>
+</plist>

@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   let query = admin
     .from('news_articles')
     .select(
-      'id, title, source_name, source_url, published_at, scraped_at, tags, blog_title, blog_body, note_draft_url, note_post_url, note_posted_at, ai_summary, raw_excerpt, emailed_at',
+      'id, title, source_name, source_url, published_at, scraped_at, tags, blog_title, blog_body, note_draft_url, note_post_url, note_posted_at, note_publish_requested_at, ai_summary, raw_excerpt, emailed_at',
       { count: 'exact' },
     )
     .order('scraped_at', { ascending: false });
