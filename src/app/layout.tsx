@@ -64,7 +64,9 @@ export default async function RootLayout({
             </div>
             <nav className="flex gap-5 text-sm text-zinc-600 dark:text-zinc-400">
               <Link href="/" className="hover:text-zinc-950 dark:hover:text-zinc-50">最新情報</Link>
+              <Link href="/cases" className="hover:text-zinc-950 dark:hover:text-zinc-50">国内事例</Link>
               <Link href="/calendar" className="hover:text-zinc-950 dark:hover:text-zinc-50">支援施策</Link>
+              <Link href="/search" className="hover:text-zinc-950 dark:hover:text-zinc-50">検索</Link>
             </nav>
           </div>
         </header>

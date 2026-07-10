@@ -112,11 +112,16 @@ export function parseRssItems(xml: string): RssItem[] {
 }
 
 function pick(s: string, re: RegExp): string {
-  return re.exec(s)?.[1]?.trim() ?? '';
+  const raw = re.exec(s)?.[1]?.trim() ?? '';
+  // WordPress feeds wrap fields in CDATA.
+  return raw.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
 }
 
 function decodeEntities(s: string): string {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCodePoint(Number.parseInt(n, 16)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 
 function normalizeDate(s: string): string | null {

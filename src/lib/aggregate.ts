@@ -10,9 +10,11 @@ import { envGoJpScraper } from '@/lib/scrapers/env-go-jp';
 import { metiScraper } from '@/lib/scrapers/meti';
 import { maffScraper } from '@/lib/scrapers/maff';
 import { soumuScraper } from '@/lib/scrapers/soumu';
+import { domesticCasesScraper } from '@/lib/scrapers/domestic-cases';
 import { fetchArticlePage } from '@/lib/scrapers/body';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
 import { summarizeArticle } from '@/lib/ai/summarize';
+import { embedTexts, embeddingInput } from '@/lib/ai/embeddings';
 import { checkNotePublished } from '@/lib/note/check-published';
 import { emailUnsentArticles, type MailResult } from '@/lib/mail/send-articles';
 
@@ -29,11 +31,14 @@ const SCRAPERS = [
   metiScraper,
   maffScraper,
   soumuScraper,
+  domesticCasesScraper,
 ];
 const BODY_BATCH = 40;
 const BODY_CONCURRENCY = 4;
 const SUMMARIZE_BATCH = 40;
 const SUMMARIZE_CONCURRENCY = 3;
+const EMBED_BATCH = 200;      // rows per aggregate run
+const EMBED_API_BATCH = 50;   // texts per OpenAI API call
 
 export interface AggregateResult {
   ok: boolean;
@@ -42,6 +47,7 @@ export interface AggregateResult {
   inserted: number;
   bodies: { pending: number; ok: number; failed: number; error?: string };
   summarized: { pending: number; ok: number; failed: number; sampleErrors?: string[]; error?: string };
+  embedded: { pending: number; ok: number; failed: number; skipped?: string; error?: string };
   notePublished: Awaited<ReturnType<typeof checkNotePublished>>;
   mailed: MailResult;
   insertError?: string;
@@ -85,6 +91,7 @@ export async function runAggregation(): Promise<AggregateResult> {
         inserted: 0,
         bodies: { pending: 0, ok: 0, failed: 0 },
         summarized: { pending: 0, ok: 0, failed: 0 },
+        embedded: { pending: 0, ok: 0, failed: 0 },
         notePublished: { rssItems: 0, matched: 0, updated: 0, noteUsername: null },
         mailed: { pending: 0, sent: 0, failed: 0, recipients: 0 },
         insertError: error.message,
@@ -95,6 +102,7 @@ export async function runAggregation(): Promise<AggregateResult> {
 
   const bodies = await backfillBodies(admin);
   const summarized = await backfillSummaries(admin);
+  const embedded = await backfillEmbeddings(admin);
 
   let notePublished: Awaited<ReturnType<typeof checkNotePublished>> = {
     rssItems: 0,
@@ -124,6 +132,7 @@ export async function runAggregation(): Promise<AggregateResult> {
   if (metaError) console.error('[aggregate] system_meta upsert failed:', metaError.message);
 
   revalidatePath('/');
+  revalidatePath('/cases');
   if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0 || notePublished.updated > 0) {
     revalidatePath('/calendar');
   }
@@ -135,6 +144,7 @@ export async function runAggregation(): Promise<AggregateResult> {
     inserted,
     bodies,
     summarized,
+    embedded,
     notePublished,
     mailed,
   };
@@ -178,6 +188,65 @@ async function backfillBodies(admin: Admin) {
     );
   }
   return { pending: rows.length, ok, failed };
+}
+
+// Embeds articles for vector search. Only rows that already have a summary
+// or body are embedded — title-only rows wait for a later run so the vector
+// captures real content (embedding is written once and never refreshed).
+async function backfillEmbeddings(admin: Admin) {
+  if (!process.env.OPENAI_API_KEY) {
+    return { pending: 0, ok: 0, failed: 0, skipped: 'OPENAI_API_KEY not set' };
+  }
+
+  const { data: pending, error } = await admin
+    .from('news_articles')
+    .select('id, title, source_name, tags, ai_summary, raw_excerpt')
+    .is('embedding', null)
+    .or('ai_summary.not.is.null,raw_excerpt.not.is.null')
+    .order('scraped_at', { ascending: false })
+    .limit(EMBED_BATCH);
+
+  if (error) return { pending: 0, ok: 0, failed: 0, error: error.message };
+  if (!pending || pending.length === 0) return { pending: 0, ok: 0, failed: 0 };
+
+  type Row = {
+    id: string;
+    title: string;
+    source_name: string;
+    tags: string[];
+    ai_summary: string | null;
+    raw_excerpt: string | null;
+  };
+  const rows = pending as Row[];
+  let ok = 0;
+  let failed = 0;
+  let firstError: string | undefined;
+
+  for (let i = 0; i < rows.length; i += EMBED_API_BATCH) {
+    const batch = rows.slice(i, i + EMBED_API_BATCH);
+    try {
+      const vectors = await embedTexts(batch.map(embeddingInput));
+      await Promise.all(
+        batch.map(async (row, j) => {
+          const { error: updErr } = await admin
+            .from('news_articles')
+            .update({ embedding: JSON.stringify(vectors[j]) } as never)
+            .eq('id', row.id);
+          if (updErr) {
+            failed += 1;
+            firstError ??= updErr.message;
+          } else {
+            ok += 1;
+          }
+        }),
+      );
+    } catch (e) {
+      failed += batch.length;
+      firstError ??= (e as Error).message;
+    }
+  }
+
+  return { pending: rows.length, ok, failed, ...(firstError ? { error: firstError } : {}) };
 }
 
 async function backfillSummaries(admin: Admin) {

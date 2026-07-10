@@ -1,7 +1,7 @@
-export type SourceType = 'municipality' | 'news_site' | 'national';
+export type SourceType = 'municipality' | 'news_site' | 'national' | 'domestic_case';
 export type IssuerLevel = 'national' | 'prefectural' | 'municipal';
 
-export interface Municipality {
+export type Municipality = {
   id: string;
   name: string;
   name_kana: string | null;
@@ -10,7 +10,7 @@ export interface Municipality {
   created_at: string;
 }
 
-export interface NewsArticle {
+export type NewsArticle = {
   id: string;
   source_type: SourceType;
   source_id: string | null;
@@ -29,17 +29,25 @@ export interface NewsArticle {
   note_draft_url: string | null;
   note_post_url: string | null;
   note_posted_at: string | null;
+  note_publish_requested_at: string | null;
   blog_title: string | null;
   blog_body: string | null;
+  /** pgvector column — returned as a string like "[0.1,...]"; written as JSON string */
+  embedding: string | null;
 }
 
-export interface SystemMeta {
+// All news_articles columns except `embedding` (1536-dim vector ≈ 19KB per
+// row as JSON). Use instead of select('*') anywhere the vector is not needed.
+export const ARTICLE_COLUMNS =
+  'id, source_type, source_id, source_name, source_url, title, published_at, raw_excerpt, ai_summary, ai_summary_model, tags, relevance_score, scraped_at, created_at, emailed_at, note_draft_url, note_post_url, note_posted_at, note_publish_requested_at, blog_title, blog_body';
+
+export type SystemMeta = {
   key: string;
   value: string | null;
   updated_at: string;
 }
 
-export interface MailRecipient {
+export type MailRecipient = {
   id: string;
   email: string;
   enabled: boolean;
@@ -47,7 +55,7 @@ export interface MailRecipient {
   created_at: string;
 }
 
-export interface Subsidy {
+export type Subsidy = {
   id: string;
   name: string;
   issuer: string;
@@ -62,14 +70,36 @@ export interface Subsidy {
   created_at: string;
 }
 
+// Row returned by the match_news_articles RPC (vector search).
+export type MatchedArticle = {
+  id: string;
+  title: string;
+  source_name: string;
+  source_url: string;
+  source_type: SourceType;
+  published_at: string | null;
+  scraped_at: string;
+  tags: string[];
+  ai_summary: string | null;
+  note_post_url: string | null;
+  similarity: number;
+}
+
 export interface Database {
   public: {
     Tables: {
-      municipalities: { Row: Municipality; Insert: Partial<Municipality> & Pick<Municipality, 'id' | 'name'>; Update: Partial<Municipality> };
-      news_articles: { Row: NewsArticle; Insert: Partial<NewsArticle> & Pick<NewsArticle, 'source_type' | 'source_name' | 'source_url' | 'title'>; Update: Partial<NewsArticle> };
-      subsidies: { Row: Subsidy; Insert: Partial<Subsidy> & Pick<Subsidy, 'name' | 'issuer' | 'issuer_level' | 'source_url'>; Update: Partial<Subsidy> };
-      system_meta: { Row: SystemMeta; Insert: Partial<SystemMeta> & Pick<SystemMeta, 'key'>; Update: Partial<SystemMeta> };
-      mail_recipients: { Row: MailRecipient; Insert: Partial<MailRecipient> & Pick<MailRecipient, 'email'>; Update: Partial<MailRecipient> };
+      municipalities: { Row: Municipality; Insert: Partial<Municipality> & Pick<Municipality, 'id' | 'name'>; Update: Partial<Municipality>; Relationships: [] };
+      news_articles: { Row: NewsArticle; Insert: Partial<NewsArticle> & Pick<NewsArticle, 'source_type' | 'source_name' | 'source_url' | 'title'>; Update: Partial<NewsArticle>; Relationships: [] };
+      subsidies: { Row: Subsidy; Insert: Partial<Subsidy> & Pick<Subsidy, 'name' | 'issuer' | 'issuer_level' | 'source_url'>; Update: Partial<Subsidy>; Relationships: [] };
+      system_meta: { Row: SystemMeta; Insert: Partial<SystemMeta> & Pick<SystemMeta, 'key'>; Update: Partial<SystemMeta>; Relationships: [] };
+      mail_recipients: { Row: MailRecipient; Insert: Partial<MailRecipient> & Pick<MailRecipient, 'email'>; Update: Partial<MailRecipient>; Relationships: [] };
+    };
+    Views: { [_ in never]: never };
+    Functions: {
+      match_news_articles: {
+        Args: { query_embedding: string; match_count?: number; filter_source_type?: string | null };
+        Returns: MatchedArticle[];
+      };
     };
   };
 }

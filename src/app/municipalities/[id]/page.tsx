@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { formatDateJST } from '@/lib/format';
-import type { Municipality, NewsArticle } from '@/lib/database.types';
+import { ARTICLE_COLUMNS, type Municipality, type NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 600;
 
@@ -17,12 +17,12 @@ export default async function MunicipalityPage({
 
   const [{ data: m }, { data: news }] = await Promise.all([
     supabase.from('municipalities').select('*').eq('id', id).single(),
-    supabase.from('news_articles').select('*').eq('source_id', id).order('published_at', { ascending: false, nullsFirst: false }).limit(50),
+    supabase.from('news_articles').select(ARTICLE_COLUMNS).eq('source_id', id).order('published_at', { ascending: false, nullsFirst: false }).limit(50),
   ]);
 
   if (!m) notFound();
   const municipality = m as Municipality;
-  const articles = (news ?? []) as NewsArticle[];
+  const articles = (news ?? []) as unknown as NewsArticle[];
 
   return (
     <div className="space-y-8">

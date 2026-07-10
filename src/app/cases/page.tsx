@@ -9,23 +9,13 @@ import { ARTICLE_COLUMNS, type NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
 
-const ALL_TAGS = ['補助金', '資源循環', '脱炭素', 'プラスチック', '食品ロス', 'バイオマス', 'サーキュラー'];
-const PAGE_SIZE = 30;
+export const metadata = {
+  title: '国内事例 | 鹿児島サーキュラーエコノミー情報ポータル',
+  description: '全国のサーキュラーエコノミー実践事例をCE専門メディアから自動収集しています。',
+};
 
-function firstParagraph(md: string): string {
-  const lines = md.split('\n');
-  const chunks: string[] = [];
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t) {
-      if (chunks.length > 0) break;
-      continue;
-    }
-    if (t.startsWith('|') || t.startsWith('#')) break;
-    chunks.push(line);
-  }
-  return chunks.join('\n').trim() || md.slice(0, 200);
-}
+const ALL_TAGS = ['資源循環', '脱炭素', 'プラスチック', '食品ロス', 'バイオマス', 'サーキュラー'];
+const PAGE_SIZE = 30;
 
 function buildQuery(
   current: { tag?: string; source?: string },
@@ -35,13 +25,12 @@ function buildQuery(
   const params = new URLSearchParams();
   if (next.tag) params.set('tag', next.tag);
   if (next.source) params.set('source', next.source);
-  // Changing a filter resets to page 1; only explicit patch.page keeps paging.
   if (patch.page && patch.page > 1) params.set('page', String(patch.page));
   const qs = params.toString();
-  return qs ? `/?${qs}` : '/';
+  return qs ? `/cases?${qs}` : '/cases';
 }
 
-export default async function Home({
+export default async function CasesPage({
   searchParams,
 }: {
   searchParams: Promise<{ tag?: string; source?: string; page?: string }>;
@@ -53,8 +42,8 @@ export default async function Home({
   let query = supabase
     .from('news_articles')
     .select(ARTICLE_COLUMNS, { count: 'exact' })
-    .neq('source_type', 'domestic_case')
-    .order('scraped_at', { ascending: false, nullsFirst: false })
+    .eq('source_type', 'domestic_case')
+    .order('published_at', { ascending: false, nullsFirst: false })
     .range(offset, offset + PAGE_SIZE - 1);
 
   if (filters.tag) query = query.contains('tags', [filters.tag]);
@@ -65,11 +54,10 @@ export default async function Home({
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Distinct sources across DB (unfiltered) for the source picker
   const { data: srcRows } = await supabase
     .from('news_articles')
     .select('source_name')
-    .neq('source_type', 'domestic_case');
+    .eq('source_type', 'domestic_case');
   const sourceCounts: Record<string, number> = {};
   (srcRows ?? []).forEach((r) => {
     const n = (r as { source_name: string }).source_name;
@@ -83,9 +71,9 @@ export default async function Home({
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-3xl font-semibold tracking-tight">最新情報</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">国内事例</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          鹿児島県内の自治体・国の公式発表から、サーキュラーエコノミー関連情報を自動収集しています。
+          全国のサーキュラーエコノミー実践事例を、CE専門メディアの公式RSSから自動収集しています。各記事の著作権は出典元に帰属します。
         </p>
       </section>
 
@@ -98,21 +86,17 @@ export default async function Home({
           ))}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium text-zinc-500 mr-1">出典:</span>
+          <span className="text-xs font-medium text-zinc-500 mr-1">メディア:</span>
           <FilterPill href={buildQuery(filters, { source: null })} active={!filters.source}>すべて</FilterPill>
           {sourceNames.map((s) => (
-            <SourcePill
-              key={s}
-              href={buildQuery(filters, { source: s })}
-              active={filters.source === s}
-              name={s}
-              count={sourceCounts[s]}
-            />
+            <FilterPill key={s} href={buildQuery(filters, { source: s })} active={filters.source === s}>
+              {s} <span className="opacity-60">({sourceCounts[s]})</span>
+            </FilterPill>
           ))}
         </div>
         {activeFilter && (
           <div className="text-xs text-zinc-500">
-            <Link href="/" className="underline hover:text-zinc-800 dark:hover:text-zinc-200">フィルタをクリア</Link>
+            <Link href="/cases" className="underline hover:text-zinc-800 dark:hover:text-zinc-200">フィルタをクリア</Link>
           </div>
         )}
         {exportItems.length > 0 && (
@@ -130,7 +114,7 @@ export default async function Home({
 
       {!error && articles.length === 0 && (
         <div className="rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 px-6 py-12 text-center text-sm text-zinc-500">
-          該当する記事がありません。
+          該当する記事がありません。次回の自動収集（毎朝6:40）以降に表示されます。
         </div>
       )}
 
@@ -144,47 +128,32 @@ export default async function Home({
               >
                 {a.source_name}
               </Link>
-              <div className="flex items-center gap-3 tabular-nums">
-                <span>発表 {formatDateJST(a.published_at)}</span>
-                <span className="text-zinc-400">·</span>
-                <span>更新 {formatDateJST(a.scraped_at)}</span>
-              </div>
+              <span className="tabular-nums">発表 {formatDateJST(a.published_at)}</span>
             </div>
             <h2 className="mt-2 font-medium leading-snug flex items-baseline gap-2">
               {isRecentlyPublished(a.scraped_at) && (
                 <span className="shrink-0 rounded bg-rose-500 text-white text-[10px] font-semibold px-1.5 py-0.5 leading-none uppercase tracking-wide">NEW</span>
               )}
-              <Link href={`/news/${a.id}`} className="hover:underline">{a.title}</Link>
+              <a href={a.source_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                {a.title} <span className="text-zinc-400">↗</span>
+              </a>
             </h2>
             {a.ai_summary && (
               <Summary
-                markdown={firstParagraph(a.ai_summary)}
+                markdown={a.ai_summary}
                 className="mt-2 text-sm text-zinc-700 dark:text-zinc-300 line-clamp-3"
               />
             )}
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-1.5">
-                {a.tags?.map((t) => (
-                  <Link
-                    key={t}
-                    href={buildQuery(filters, { tag: t })}
-                    className="rounded-full bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-400"
-                  >
-                    {t}
-                  </Link>
-                ))}
-              </div>
-              {a.note_post_url && (
-                <a
-                  href={a.note_post_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1 transition-colors"
-                  title="note でこの記事の解説ブログを読む"
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {a.tags?.map((t) => (
+                <Link
+                  key={t}
+                  href={buildQuery(filters, { tag: t })}
+                  className="rounded-full bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-400"
                 >
-                  note で読む ↗
-                </a>
-              )}
+                  {t}
+                </Link>
+              ))}
             </div>
           </li>
         ))}
@@ -232,16 +201,6 @@ function FilterPill({ href, active, children }: { href: string; active: boolean;
       }
     >
       {children}
-    </Link>
-  );
-}
-
-function SourcePill({ href, active, name, count }: { href: string; active: boolean; name: string; count: number }) {
-  const base = 'rounded-full px-3 py-1 text-xs font-medium transition-opacity';
-  const activeRing = active ? 'ring-2 ring-offset-1 ring-zinc-900 dark:ring-zinc-100 dark:ring-offset-zinc-950' : 'hover:opacity-80';
-  return (
-    <Link href={href} className={`${base} ${sourceChipClass(name)} ${activeRing}`}>
-      {name} <span className="opacity-60">({count})</span>
     </Link>
   );
 }

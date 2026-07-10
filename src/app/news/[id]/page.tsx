@@ -6,7 +6,7 @@ import { CopyMenu } from '@/components/CopyMenu';
 import { formatDateJST, isRecentlyPublished } from '@/lib/format';
 import { toExport } from '@/lib/export';
 import { sourceChipClass } from '@/lib/source-color';
-import type { NewsArticle } from '@/lib/database.types';
+import { ARTICLE_COLUMNS, type NewsArticle } from '@/lib/database.types';
 
 export const revalidate = 300;
 
@@ -18,12 +18,12 @@ export default async function NewsDetail({
   const { id } = await params;
   const { data, error } = await supabase
     .from('news_articles')
-    .select('*')
+    .select(ARTICLE_COLUMNS)
     .eq('id', id)
     .single();
 
   if (error || !data) notFound();
-  const article = data as NewsArticle;
+  const article = data as unknown as NewsArticle;
   const isNew = isRecentlyPublished(article.published_at);
 
   return (
