@@ -73,9 +73,42 @@ const SECONDARY_KEYWORDS: Array<[RegExp, string]> = [
   [/(補助金|助成|交付金)/, '補助金'],
 ];
 
+// CE-related regulations to track (EU product rules / EU trade & reporting /
+// domestic law). A match adds the umbrella tag '法規制' plus the specific tag,
+// and counts as a relevance signal on its own — regulation news often lacks
+// generic CE keywords in the title. Shown on /regulations.
+export const REGULATION_TAG = '法規制';
+export const REGULATION_KEYWORDS: Array<[RegExp, string]> = [
+  // EU product regulations
+  [/\bESPR\b|エコデザイン規則|持続可能な製品のためのエコデザイン/i, 'ESPR'],
+  [/\bDPP\b|デジタル(プロダクト|製品)パスポート|(バッテリー|電池)パスポート/i, 'DPP'],
+  [/(欧州|EU)(電池|バッテリー)規則/i, '電池規則'],
+  [/\bPPWR\b|包装(・|および)?包装廃棄物規則|欧州包装規則/i, 'PPWR'],
+  [/\bELV\b|廃(自動)?車規則|自動車設計・廃車管理規則/i, 'ELV'],
+  [/\bCEA\b|循環経済法|サーキュラーエコノミー法/i, 'CEA'],
+  // EU trade / reporting
+  [/\bCBAM\b|炭素国境調整/i, 'CBAM'],
+  [/\bCSRD\b|\bCSDDD\b|サステナビリティ報告指令|デュー・?ディリジェンス指令/i, 'CSRD/CSDDD'],
+  [/\bEUDR\b|森林破壊防止規則|森林減少防止/i, 'EUDR'],
+  // Domestic law
+  [/資源有効利用促進法/, '資源有効利用促進法'],
+  [/プラスチック(に係る)?資源循環(の)?促進(等に関する)?法|プラ新法/, 'プラ新法'],
+  [/GX-?ETS|排出量取引制度/i, 'GX-ETS'],
+  [/ウラノス|Ouranos/i, 'ウラノス'],
+  [/産業廃棄物処理法|廃棄物処理法|廃掃法/, '廃棄物処理法'],
+];
+
+export function extractRegulationTags(text: string): string[] {
+  const found = new Set<string>();
+  for (const [re, tag] of REGULATION_KEYWORDS) if (re.test(text)) found.add(tag);
+  if (found.size > 0) found.add(REGULATION_TAG);
+  return [...found];
+}
+
 export function extractTags(text: string): string[] {
   const found = new Set<string>();
   for (const [re, tag] of CE_KEYWORDS) if (re.test(text)) found.add(tag);
+  for (const tag of extractRegulationTags(text)) found.add(tag);
   if (found.size > 0) {
     for (const [re, tag] of SECONDARY_KEYWORDS) if (re.test(text)) found.add(tag);
   }
