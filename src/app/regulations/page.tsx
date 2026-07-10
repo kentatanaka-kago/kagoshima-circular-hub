@@ -2,119 +2,78 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Summary } from '@/components/Summary';
 import { CopyMenu } from '@/components/CopyMenu';
+import { RegulationCheck } from '@/components/RegulationCheck';
 import { formatDateJST, isRecentlyPublished } from '@/lib/format';
 import { toExport } from '@/lib/export';
 import { sourceChipClass } from '@/lib/source-color';
 import { ARTICLE_COLUMNS, type NewsArticle } from '@/lib/database.types';
+import { REGULATION_KEYWORDS, REGULATION_TAG } from '@/lib/scrapers/common';
 
 export const revalidate = 300;
 
-const ALL_TAGS = ['補助金', '資源循環', '脱炭素', 'プラスチック', '食品ロス', 'バイオマス', 'サーキュラー', '法規制'];
-const PAGE_SIZE = 30;
+export const metadata = {
+  title: '法規制 | 鹿児島サーキュラーエコノミー情報ポータル',
+  description: 'ESPR・DPP・電池規則など、サーキュラーエコノミー関連の法規制情報を自動収集。製品名からAIが関連規制と準備事項を簡易チェックできます。',
+};
 
-function firstParagraph(md: string): string {
-  const lines = md.split('\n');
-  const chunks: string[] = [];
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t) {
-      if (chunks.length > 0) break;
-      continue;
-    }
-    if (t.startsWith('|') || t.startsWith('#')) break;
-    chunks.push(line);
-  }
-  return chunks.join('\n').trim() || md.slice(0, 200);
-}
+const PAGE_SIZE = 30;
+// Chip order mirrors the dictionary (EU product → EU trade/reporting → domestic).
+const REG_TAGS = [...new Set(REGULATION_KEYWORDS.map(([, tag]) => tag))];
 
 function buildQuery(
-  current: { tag?: string; source?: string },
-  patch: { tag?: string | null; source?: string | null; page?: number | null },
+  current: { reg?: string },
+  patch: { reg?: string | null; page?: number | null },
 ) {
   const next = { ...current, ...patch };
   const params = new URLSearchParams();
-  if (next.tag) params.set('tag', next.tag);
-  if (next.source) params.set('source', next.source);
-  // Changing a filter resets to page 1; only explicit patch.page keeps paging.
+  if (next.reg) params.set('reg', next.reg);
   if (patch.page && patch.page > 1) params.set('page', String(patch.page));
   const qs = params.toString();
-  return qs ? `/?${qs}` : '/';
+  return qs ? `/regulations?${qs}` : '/regulations';
 }
 
-export default async function Home({
+export default async function RegulationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tag?: string; source?: string; page?: string }>;
+  searchParams: Promise<{ reg?: string; page?: string }>;
 }) {
   const filters = await searchParams;
   const page = Math.max(1, Number.parseInt(filters.page ?? '1', 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
+  const activeReg = filters.reg && REG_TAGS.includes(filters.reg) ? filters.reg : undefined;
 
-  let query = supabase
+  const wantTags = activeReg ? [REGULATION_TAG, activeReg] : [REGULATION_TAG];
+  const { data, error, count } = await supabase
     .from('news_articles')
     .select(ARTICLE_COLUMNS, { count: 'exact' })
-    .neq('source_type', 'domestic_case')
-    .order('scraped_at', { ascending: false, nullsFirst: false })
+    .contains('tags', wantTags)
+    .order('published_at', { ascending: false, nullsFirst: false })
     .range(offset, offset + PAGE_SIZE - 1);
 
-  if (filters.tag) query = query.contains('tags', [filters.tag]);
-  if (filters.source) query = query.eq('source_name', filters.source);
-
-  const { data, error, count } = await query;
   const articles = (data ?? []) as unknown as NewsArticle[];
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // Distinct sources across DB (unfiltered) for the source picker
-  const { data: srcRows } = await supabase
-    .from('news_articles')
-    .select('source_name')
-    .neq('source_type', 'domestic_case');
-  const sourceCounts: Record<string, number> = {};
-  (srcRows ?? []).forEach((r) => {
-    const n = (r as { source_name: string }).source_name;
-    sourceCounts[n] = (sourceCounts[n] ?? 0) + 1;
-  });
-  const sourceNames = Object.keys(sourceCounts).sort((a, b) => sourceCounts[b] - sourceCounts[a]);
-
-  const activeFilter = filters.tag || filters.source;
   const exportItems = articles.map(toExport);
 
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-3xl font-semibold tracking-tight">最新情報</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">法規制</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          鹿児島県内の自治体・国の公式発表から、サーキュラーエコノミー関連情報を自動収集しています。
+          ESPR・DPP・EU電池規則・改正資源有効利用促進法など、サーキュラーエコノミー関連の法規制情報を国内外の公式発表・専門メディアから自動収集しています。
         </p>
       </section>
 
+      <RegulationCheck />
+
       <section className="space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium text-zinc-500 mr-1">カテゴリ:</span>
-          <FilterPill href={buildQuery(filters, { tag: null })} active={!filters.tag}>すべて</FilterPill>
-          {ALL_TAGS.map((t) => (
-            <FilterPill key={t} href={buildQuery(filters, { tag: t })} active={filters.tag === t}>{t}</FilterPill>
+          <span className="text-xs font-medium text-zinc-500 mr-1">規制で絞り込み:</span>
+          <FilterPill href={buildQuery(filters, { reg: null })} active={!activeReg}>すべて</FilterPill>
+          {REG_TAGS.map((t) => (
+            <FilterPill key={t} href={buildQuery(filters, { reg: t })} active={activeReg === t}>{t}</FilterPill>
           ))}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium text-zinc-500 mr-1">出典:</span>
-          <FilterPill href={buildQuery(filters, { source: null })} active={!filters.source}>すべて</FilterPill>
-          {sourceNames.map((s) => (
-            <SourcePill
-              key={s}
-              href={buildQuery(filters, { source: s })}
-              active={filters.source === s}
-              name={s}
-              count={sourceCounts[s]}
-            />
-          ))}
-        </div>
-        {activeFilter && (
-          <div className="text-xs text-zinc-500">
-            <Link href="/" className="underline hover:text-zinc-800 dark:hover:text-zinc-200">フィルタをクリア</Link>
-          </div>
-        )}
         {exportItems.length > 0 && (
           <div className="pt-2">
             <CopyMenu items={exportItems} size="sm" />
@@ -130,7 +89,7 @@ export default async function Home({
 
       {!error && articles.length === 0 && (
         <div className="rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 px-6 py-12 text-center text-sm text-zinc-500">
-          該当する記事がありません。
+          該当する記事がまだありません。毎朝の自動収集で法規制関連の発表が見つかると、ここに表示されます。
         </div>
       )}
 
@@ -138,17 +97,10 @@ export default async function Home({
         {articles.map((a) => (
           <li key={a.id} className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors">
             <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
-              <Link
-                href={buildQuery(filters, { source: a.source_name })}
-                className={`rounded-full px-2 py-0.5 font-medium hover:opacity-80 transition-opacity ${sourceChipClass(a.source_name)}`}
-              >
+              <span className={`rounded-full px-2 py-0.5 font-medium ${sourceChipClass(a.source_name)}`}>
                 {a.source_name}
-              </Link>
-              <div className="flex items-center gap-3 tabular-nums">
-                <span>発表 {formatDateJST(a.published_at)}</span>
-                <span className="text-zinc-400">·</span>
-                <span>更新 {formatDateJST(a.scraped_at)}</span>
-              </div>
+              </span>
+              <span className="tabular-nums">発表 {formatDateJST(a.published_at)}</span>
             </div>
             <h2 className="mt-2 font-medium leading-snug flex items-baseline gap-2">
               {isRecentlyPublished(a.scraped_at) && (
@@ -158,33 +110,30 @@ export default async function Home({
             </h2>
             {a.ai_summary && (
               <Summary
-                markdown={firstParagraph(a.ai_summary)}
+                markdown={a.ai_summary}
                 className="mt-2 text-sm text-zinc-700 dark:text-zinc-300 line-clamp-3"
               />
             )}
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5">
-                {a.tags?.map((t) => (
+                {a.tags?.filter((t) => t !== REGULATION_TAG).map((t) => (
                   <Link
                     key={t}
-                    href={buildQuery(filters, { tag: t })}
+                    href={REG_TAGS.includes(t) ? buildQuery(filters, { reg: t }) : `/?tag=${encodeURIComponent(t)}`}
                     className="rounded-full bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-400"
                   >
                     {t}
                   </Link>
                 ))}
               </div>
-              {a.note_post_url && (
-                <a
-                  href={a.note_post_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1 transition-colors"
-                  title="note でこの記事の解説ブログを読む"
-                >
-                  note で読む ↗
-                </a>
-              )}
+              <a
+                href={a.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:underline"
+              >
+                元記事を読む ↗
+              </a>
             </div>
           </li>
         ))}
@@ -194,7 +143,7 @@ export default async function Home({
         <nav className="flex items-center justify-between text-sm" aria-label="ページ送り">
           {page > 1 ? (
             <Link
-              href={buildQuery(filters, { page: page - 1 })}
+              href={buildQuery(filters, { reg: activeReg ?? null, page: page - 1 })}
               className="px-4 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
               ← 前のページ
@@ -207,7 +156,7 @@ export default async function Home({
           </span>
           {page < totalPages ? (
             <Link
-              href={buildQuery(filters, { page: page + 1 })}
+              href={buildQuery(filters, { reg: activeReg ?? null, page: page + 1 })}
               className="px-4 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
               次のページ →
@@ -232,16 +181,6 @@ function FilterPill({ href, active, children }: { href: string; active: boolean;
       }
     >
       {children}
-    </Link>
-  );
-}
-
-function SourcePill({ href, active, name, count }: { href: string; active: boolean; name: string; count: number }) {
-  const base = 'rounded-full px-3 py-1 text-xs font-medium transition-opacity';
-  const activeRing = active ? 'ring-2 ring-offset-1 ring-zinc-900 dark:ring-zinc-100 dark:ring-offset-zinc-950' : 'hover:opacity-80';
-  return (
-    <Link href={href} className={`${base} ${sourceChipClass(name)} ${activeRing}`}>
-      {name} <span className="opacity-60">({count})</span>
     </Link>
   );
 }

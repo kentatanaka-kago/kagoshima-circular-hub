@@ -45,7 +45,7 @@ export async function upsertAndBackfill(articles: ScrapedArticle[]): Promise<Ing
 
   if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0) {
     revalidatePath('/');
-    revalidatePath('/calendar');
+    revalidatePath('/regulations');
   }
 
   return { candidates: articles.length, inserted, bodies, summarized, mailed };

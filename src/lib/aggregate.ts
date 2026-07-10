@@ -12,6 +12,7 @@ import { maffScraper } from '@/lib/scrapers/maff';
 import { soumuScraper } from '@/lib/scrapers/soumu';
 import { domesticCasesScraper } from '@/lib/scrapers/domestic-cases';
 import { fetchArticlePage } from '@/lib/scrapers/body';
+import { extractRegulationTags } from '@/lib/scrapers/common';
 import type { ScrapedArticle, ScraperResult } from '@/lib/scrapers/types';
 import { summarizeArticle } from '@/lib/ai/summarize';
 import { embedTexts, embeddingInput } from '@/lib/ai/embeddings';
@@ -133,9 +134,7 @@ export async function runAggregation(): Promise<AggregateResult> {
 
   revalidatePath('/');
   revalidatePath('/cases');
-  if (inserted > 0 || bodies.ok > 0 || summarized.ok > 0 || notePublished.updated > 0) {
-    revalidatePath('/calendar');
-  }
+  revalidatePath('/regulations');
 
   return {
     ok: true,
@@ -252,7 +251,7 @@ async function backfillEmbeddings(admin: Admin) {
 async function backfillSummaries(admin: Admin) {
   const { data: pending, error } = await admin
     .from('news_articles')
-    .select('id, title, source_name, raw_excerpt')
+    .select('id, title, source_name, raw_excerpt, tags')
     .is('ai_summary', null)
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(SUMMARIZE_BATCH);
@@ -260,7 +259,7 @@ async function backfillSummaries(admin: Admin) {
   if (error) return { pending: 0, ok: 0, failed: 0, error: error.message };
   if (!pending || pending.length === 0) return { pending: 0, ok: 0, failed: 0 };
 
-  type Row = { id: string; title: string; source_name: string; raw_excerpt: string | null };
+  type Row = { id: string; title: string; source_name: string; raw_excerpt: string | null; tags: string[] };
   const rows = pending as Row[];
 
   let ok = 0;
@@ -277,9 +276,15 @@ async function backfillSummaries(admin: Admin) {
             source_name: row.source_name,
             excerpt: row.raw_excerpt,
           });
+          // Regulation names (ESPR, DPP, 電池規則 …) often appear only in the
+          // body, not the title — re-scan now that we have a summary.
+          const regTags = extractRegulationTags(`${row.title}\n${summary}`);
+          const mergedTags = [...new Set([...(row.tags ?? []), ...regTags])];
+          const update: Record<string, unknown> = { ai_summary: summary, ai_summary_model: model };
+          if (mergedTags.length !== (row.tags ?? []).length) update.tags = mergedTags;
           const { error: updateError } = await admin
             .from('news_articles')
-            .update({ ai_summary: summary, ai_summary_model: model } as never)
+            .update(update as never)
             .eq('id', row.id);
           if (updateError) throw updateError;
           ok += 1;
