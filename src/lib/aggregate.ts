@@ -10,6 +10,8 @@ import { envGoJpScraper } from '@/lib/scrapers/env-go-jp';
 import { metiScraper } from '@/lib/scrapers/meti';
 import { maffScraper } from '@/lib/scrapers/maff';
 import { soumuScraper } from '@/lib/scrapers/soumu';
+import { jetroScraper } from '@/lib/scrapers/jetro';
+import { envCouncilScraper } from '@/lib/scrapers/env-council';
 import { domesticCasesScraper } from '@/lib/scrapers/domestic-cases';
 import { fetchArticlePage } from '@/lib/scrapers/body';
 import { extractRegulationTags } from '@/lib/scrapers/common';
@@ -32,6 +34,8 @@ const SCRAPERS = [
   metiScraper,
   maffScraper,
   soumuScraper,
+  jetroScraper,
+  envCouncilScraper,
   domesticCasesScraper,
 ];
 const BODY_BATCH = 40;
