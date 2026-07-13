@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { Summary } from '@/components/Summary';
 
@@ -11,12 +11,31 @@ interface SourceRef {
   published_at: string | null;
 }
 
+type StreamEvent =
+  | { type: 'sources'; sources: SourceRef[] }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; id: string | null }
+  | { type: 'error'; error: string };
+
 export function RegulationCheck() {
   const [product, setProduct] = useState('');
   const [loading, setLoading] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceRef[]>([]);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 逐次 setState だと描画が過剰になるので、バッファに溜めて rAF でまとめて反映。
+  const bufferRef = useRef('');
+  const flushTimerRef = useRef<number | null>(null);
+
+  function flushSoon() {
+    if (flushTimerRef.current !== null) return;
+    flushTimerRef.current = window.requestAnimationFrame(() => {
+      flushTimerRef.current = null;
+      setAnswer(bufferRef.current);
+    });
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,23 +45,58 @@ export function RegulationCheck() {
     setError(null);
     setAnswer(null);
     setSources([]);
+    setShareId(null);
+    setCopied(false);
+    bufferRef.current = '';
     try {
       const res = await fetch('/api/regulation-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ product: q }),
       });
-      const json = await res.json();
-      if (res.ok && json.ok) {
-        setAnswer(json.answer);
-        setSources(json.sources ?? []);
-      } else {
-        setError(json.error ?? 'エラーが発生しました');
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!res.ok || !contentType.includes('text/event-stream')) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.error ?? 'エラーが発生しました');
       }
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let pending = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        pending += decoder.decode(value, { stream: true });
+        // SSE frames are separated by a blank line.
+        const frames = pending.split('\n\n');
+        pending = frames.pop() ?? '';
+        for (const frame of frames) {
+          const data = frame.split('\n').find((l) => l.startsWith('data: '))?.slice(6);
+          if (!data) continue;
+          const ev = JSON.parse(data) as StreamEvent;
+          if (ev.type === 'sources') setSources(ev.sources);
+          else if (ev.type === 'delta') {
+            bufferRef.current += ev.text;
+            flushSoon();
+          } else if (ev.type === 'done') setShareId(ev.id);
+          else if (ev.type === 'error') throw new Error(ev.error);
+        }
+      }
+      setAnswer(bufferRef.current || null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyShareLink() {
+    if (!shareId) return;
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/regulation-check/${shareId}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('コピーに失敗しました');
     }
   }
 
@@ -72,9 +126,9 @@ export function RegulationCheck() {
         </button>
       </form>
 
-      {loading && (
+      {loading && !answer && (
         <p className="text-sm text-indigo-900/70 dark:text-indigo-200/70">
-          関連する規制記事を検索し、AIが整理しています（10秒ほどかかります）…
+          関連する規制記事を検索しています…
         </p>
       )}
       {error && <p className="text-sm text-red-700 dark:text-red-400">✗ {error}</p>}
@@ -82,7 +136,7 @@ export function RegulationCheck() {
       {answer && (
         <div className="rounded-md bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-900 p-4 space-y-3">
           <Summary markdown={answer} className="text-sm text-zinc-800 dark:text-zinc-200" />
-          {sources.length > 0 && (
+          {!loading && sources.length > 0 && (
             <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
               <p className="text-xs font-medium text-zinc-500 mb-1.5">参考にした収集記事:</p>
               <ul className="space-y-1">
@@ -95,6 +149,23 @@ export function RegulationCheck() {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+          {!loading && shareId && (
+            <div className="flex items-center gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={copyShareLink}
+                className="px-3 py-1.5 rounded-md border border-indigo-300 dark:border-indigo-800 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+              >
+                {copied ? '✓ コピーしました' : 'この結果の共有リンクをコピー'}
+              </button>
+              <Link
+                href={`/regulation-check/${shareId}`}
+                className="text-xs text-indigo-700 dark:text-indigo-300 hover:underline"
+              >
+                結果ページを開く ↗
+              </Link>
             </div>
           )}
           <p className="text-[11px] text-zinc-400">

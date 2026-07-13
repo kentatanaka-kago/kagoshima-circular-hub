@@ -70,6 +70,25 @@ export type Subsidy = {
   created_at: string;
 }
 
+// 規制チェック結果の出典記事（sources jsonb の要素）。
+export type RegulationCheckSource = {
+  id: string;
+  title: string;
+  source_name: string;
+  published_at: string | null;
+}
+
+export type RegulationCheck = {
+  id: string;
+  product: string;
+  company_name: string | null;
+  corporate_number: string | null;
+  answer: string;
+  sources: RegulationCheckSource[];
+  model: string | null;
+  created_at: string;
+}
+
 // Row returned by the match_news_articles RPC (vector search).
 export type MatchedArticle = {
   id: string;
@@ -93,6 +112,7 @@ export interface Database {
       subsidies: { Row: Subsidy; Insert: Partial<Subsidy> & Pick<Subsidy, 'name' | 'issuer' | 'issuer_level' | 'source_url'>; Update: Partial<Subsidy>; Relationships: [] };
       system_meta: { Row: SystemMeta; Insert: Partial<SystemMeta> & Pick<SystemMeta, 'key'>; Update: Partial<SystemMeta>; Relationships: [] };
       mail_recipients: { Row: MailRecipient; Insert: Partial<MailRecipient> & Pick<MailRecipient, 'email'>; Update: Partial<MailRecipient>; Relationships: [] };
+      regulation_checks: { Row: RegulationCheck; Insert: Partial<RegulationCheck> & Pick<RegulationCheck, 'product' | 'answer'>; Update: Partial<RegulationCheck>; Relationships: [] };
     };
     Views: { [_ in never]: never };
     Functions: {
