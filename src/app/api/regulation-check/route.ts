@@ -56,9 +56,21 @@ export async function POST(req: Request) {
   }
 
   let product: string;
+  let companyName: string | null = null;
+  let corporateNumber: string | null = null;
   try {
-    const body = (await req.json()) as { product?: string };
+    const body = (await req.json()) as {
+      product?: string;
+      company?: { name?: string; corporate_number?: string };
+    };
     product = (body.product ?? '').trim();
+    // 企業検索フローから来た場合のみ付く。回答のパーソナライズと保存に使う。
+    const name = (body.company?.name ?? '').trim();
+    const num = (body.company?.corporate_number ?? '').trim();
+    if (name.length >= 1 && name.length <= 100 && /^\d{13}$/.test(num)) {
+      companyName = name;
+      corporateNumber = num;
+    }
   } catch {
     return NextResponse.json({ error: 'expected JSON body { product }' }, { status: 400 });
   }
@@ -118,7 +130,9 @@ export async function POST(req: Request) {
           messages: [
             {
               role: 'user',
-              content: `製品・部品名: ${product}\n\n参考記事（当サイトが収集した法規制関連記事）:\n${articleContext}`,
+              content: `製品・部品名: ${product}${
+                companyName ? `\n対象企業: ${companyName}（この企業の立場で実務準備を整理すること）` : ''
+              }\n\n参考記事（当サイトが収集した法規制関連記事）:\n${articleContext}`,
             },
           ],
         });
@@ -131,7 +145,14 @@ export async function POST(req: Request) {
         try {
           const { data, error } = await admin
             .from('regulation_checks')
-            .insert({ product, answer, sources, model: MODEL } as never)
+            .insert({
+              product,
+              answer,
+              sources,
+              model: MODEL,
+              company_name: companyName,
+              corporate_number: corporateNumber,
+            } as never)
             .select('id')
             .single();
           if (error) throw new Error(error.message);
