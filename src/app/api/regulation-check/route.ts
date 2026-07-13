@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase';
 import { embedTexts } from '@/lib/ai/embeddings';
 import { REGULATION_TAG } from '@/lib/scrapers/common';
-import type { MatchedArticle } from '@/lib/database.types';
+import type { MatchedArticle, RegulationCheckSource } from '@/lib/database.types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -41,6 +41,11 @@ const SYSTEM_PROMPT = `あなたは鹿児島県の中小企業の実務担当者
 - 対象外と思われる規制は無理に含めない。入力が製品・部品・素材名として解釈できない場合は、その旨を短く伝えて例を示す
 - 全体で600字程度まで。法的助言ではなく情報整理であることを踏まえ、断定を避ける`;
 
+// SSE line: data: {"type":"sources"|"delta"|"done"|"error", ...}\n\n
+function sse(payload: Record<string, unknown>): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
 export async function POST(req: Request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return NextResponse.json({ error: 'AI機能が未設定です' }, { status: 503 });
@@ -61,11 +66,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `製品・部品名は2〜${MAX_INPUT_CHARS}文字で入力してください` }, { status: 400 });
   }
 
+  const admin = supabaseAdmin();
+
   // Retrieve regulation articles semantically close to the product.
   let related: MatchedArticle[] = [];
   try {
     const [vector] = await embedTexts([`${product} に関係する法規制・義務・報告要件`]);
-    const { data, error } = await supabaseAdmin().rpc('match_news_articles', {
+    const { data, error } = await admin.rpc('match_news_articles', {
       query_embedding: JSON.stringify(vector),
       match_count: RETRIEVE_COUNT,
     });
@@ -87,39 +94,66 @@ export async function POST(req: Request) {
         .join('\n\n')
     : '（関連する収集記事なし — 一般知識のみで簡潔に回答し、その旨を明記すること）';
 
-  const client = new Anthropic({ apiKey });
-  let answer: string;
-  try {
-    const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
-      temperature: 0.2,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `製品・部品名: ${product}\n\n参考記事（当サイトが収集した法規制関連記事）:\n${articleContext}`,
-        },
-      ],
-    });
-    answer = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n')
-      .trim();
-  } catch (e) {
-    return NextResponse.json({ error: `AI応答の生成に失敗しました: ${(e as Error).message}` }, { status: 502 });
-  }
+  const sources: RegulationCheckSource[] = related.map((a) => ({
+    id: a.id,
+    title: a.title,
+    source_name: a.source_name,
+    published_at: a.published_at,
+  }));
 
-  return NextResponse.json({
-    ok: true,
-    product,
-    answer,
-    sources: related.map((a) => ({
-      id: a.id,
-      title: a.title,
-      source_name: a.source_name,
-      published_at: a.published_at,
-    })),
+  const client = new Anthropic({ apiKey });
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (payload: Record<string, unknown>) => controller.enqueue(encoder.encode(sse(payload)));
+      try {
+        send({ type: 'sources', sources });
+
+        const messageStream = client.messages.stream({
+          model: MODEL,
+          max_tokens: 1500,
+          temperature: 0.2,
+          system: SYSTEM_PROMPT,
+          messages: [
+            {
+              role: 'user',
+              content: `製品・部品名: ${product}\n\n参考記事（当サイトが収集した法規制関連記事）:\n${articleContext}`,
+            },
+          ],
+        });
+        messageStream.on('text', (delta) => send({ type: 'delta', text: delta }));
+        const answer = (await messageStream.finalText()).trim();
+
+        // Save for the share URL. A failed insert degrades to "no share
+        // link" — the streamed answer is already on screen.
+        let checkId: string | null = null;
+        try {
+          const { data, error } = await admin
+            .from('regulation_checks')
+            .insert({ product, answer, sources, model: MODEL } as never)
+            .select('id')
+            .single();
+          if (error) throw new Error(error.message);
+          checkId = (data as { id: string }).id;
+        } catch (e) {
+          console.error('[regulation-check] save failed:', (e as Error).message);
+        }
+
+        send({ type: 'done', id: checkId });
+      } catch (e) {
+        send({ type: 'error', error: `AI応答の生成に失敗しました: ${(e as Error).message}` });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    },
   });
 }
